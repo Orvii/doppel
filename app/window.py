@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import time
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
@@ -71,6 +71,77 @@ class StatusDot(QWidget):
         painter.setBrush(QColor(self._colour))
         painter.drawEllipse(1, 1, 8, 8)
         painter.end()
+
+
+class KayitRozeti(QWidget):
+    """Kayıt sürerken görünen kırmızı nokta, süre ve durdurma.
+
+    Durum şeridinde duruyor, komut çubuğunda değil. Çubuk ajanın söz
+    söylediği yer ve orada yazılan her şey bir sonraki cümlenin altında
+    kalıyor; kaydın "hâlâ açık" demesi gereken süre ise dakikalar.
+    Şerit ise pencere açıkken hep aynı yerde ve hiç kaymıyor.
+
+    Nokta yanıp sönüyor. Sabit kırmızı bir daire durum ışığından
+    ayırt edilemiyordu — şeritte zaten bir tane var ve ikisi yan yana
+    "iki durum mu var" sorusunu doğuruyor. Yanıp sönen nokta her
+    kayıt cihazının dili; kimseye açıklamak gerekmiyor.
+    """
+
+    stop_requested = Signal()
+
+    #: Yanıp sönme periyodu. Bir saniye, saniye sayacıyla aynı ritimde:
+    #: iki farklı hızda kıpırdayan iki şey, tek bir şeyden daha çok
+    #: dikkat çekiyor ve dikkat burada kayda değil işe ait.
+    ARALIK_MS = 1000
+
+    def __init__(self, t: Tokens) -> None:
+        super().__init__()
+        self.t = t
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(GAP * 2, 0, GAP * 2, 0)
+        layout.setSpacing(GAP)
+
+        self._dot = StatusDot(t)
+        self._dot.set_colour(t.critical)
+        layout.addWidget(self._dot)
+
+        self._label = QLabel("REC 0:00")
+        self._label.setStyleSheet(
+            f"color: {t.critical}; font-weight: 600; letter-spacing: 0.4px;"
+        )
+        layout.addWidget(self._label)
+
+        self._stop = QPushButton("Stop recording")
+        self._stop.setToolTip("Stop the recording and keep the video")
+        self._stop.setFixedHeight(32)
+        self._stop.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._stop.clicked.connect(self.stop_requested.emit)
+        layout.addWidget(self._stop)
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(self.ARALIK_MS)
+        self._timer.timeout.connect(self._tik)
+        self._acik = True
+        self._basladi = 0.0
+        self.hide()
+
+    def basladi(self) -> None:
+        self._basladi = time.monotonic()
+        self._acik = True
+        self._dot.set_colour(self.t.critical)
+        self._label.setText("REC 0:00")
+        self._timer.start()
+        self.show()
+
+    def bitti(self) -> None:
+        self._timer.stop()
+        self.hide()
+
+    def _tik(self) -> None:
+        self._acik = not self._acik
+        self._dot.set_colour(self.t.critical if self._acik else self.t.divider)
+        gecen = int(time.monotonic() - self._basladi)
+        self._label.setText(f"REC {gecen // 60}:{gecen % 60:02d}")
 
 
 class Counter(QWidget):
@@ -128,6 +199,11 @@ class StatusBar(QWidget):
         self._line = QLabel()
         self._line.setProperty("role", "caption")
         layout.addWidget(self._line, 1)
+
+        #: Kayıt rozeti sayaçların solunda: sayaçlar hep orada duruyor ve
+        #: rozet göründüğünde onları kaydırmıyor, aralarına girmiyor.
+        self.kayit = KayitRozeti(t)
+        layout.addWidget(self.kayit)
 
         self.steps = Counter(t, "steps")
         self.unsaved = Counter(t, "unsaved", warn=True)
@@ -387,6 +463,17 @@ class MainWindow(QMainWindow):
         if self._bar is not None:
             self._bar.set_busy(False)
             self._bar.clear_approval()
+
+    # --- ekran kaydı ------------------------------------------------------
+
+    def kayit_basladi(self, yol: str) -> None:
+        self.status.kayit.basladi()
+        self.status.set_line(f"Recording to {yol}")
+
+    def kayit_bitti(self, satir: str = "") -> None:
+        self.status.kayit.bitti()
+        if satir:
+            self.status.set_line(satir)
 
     # --- değişiklikler ----------------------------------------------------
 

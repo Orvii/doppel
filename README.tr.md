@@ -554,6 +554,35 @@ parçacığında basılı görünmüyor, ve sürükle-bırak yok.
 
 `python scripts/ikinci_imlec_dogrula.py` bunu uçtan uca ölçüyor.
 
+### Yan masanın videosu
+
+Ekran görüntüsü ajanın nerede durduğunu söylüyor, ne yaptığını değil.
+`record_start` / `record_stop` yan masadaki bir pencereyi `runs/<koşu>/`
+altına mp4 olarak kaydediyor; paylaşılabilir bir dosya çıkıyor.
+
+ffmpeg süreci `STARTUPINFOW.lpDesktop` ile **yan masaüstünde** doğuyor.
+`subprocess` bu alanı hiç açmıyor ve normal bir `ffmpeg -i desktop`
+Berkay'ın ekranını kaydederdi — yanlış ekranı, üstelik doğru görünen bir
+dosya üreterek.
+
+Ölçüldü, varsayılmadı (`python scripts/dogrula_kayit.py`): yan masaüstünde
+`-i desktop` hiç çalışmıyor, ffmpeg "Failed to capture image (error 5)"
+diyip ölüyor. Sebep `masaustu.py`'deki gerçeğin aynısı — Windows yalnızca
+**girdi masaüstünü** çiziyor, etkin olmayan bir masaüstünün ekran yüzeyi
+yok. `-i hwnd=` ise çalışıyor: charmap penceresi 43 karede, gerçek
+içerikle. Bedeli kayıt başına tek pencere ve bu gizlenmiyor, aracın
+tanımında modele de yazıyor.
+
+Durdurma ffmpeg'in stdin'ine `q` yazıyor ve bekliyor. Öldürmek son çare:
+sert öldürülen ffmpeg `moov` atomunu yazamıyor ve geriye açılmayan bir
+mp4 kalıyor. Koşu biterken, uygulama kapanırken ve Esc ×3'te kayıt
+kapanıyor — üçünde de arkada süreç kalmıyor. Kayıt sürerken durum
+şeridinde yanıp sönen kırmızı bir nokta, geçen süre ve bir durdurma
+düğmesi duruyor.
+
+Kuru koşuda **engelli**: kayıt dosya yazıyor ve `kuru.py` izin listesine
+girmiyor.
+
 ### Ajanın masası
 
 Yan alan görünmezdi: `side_capture` yalnızca ajan bir eylem yaptığında kare

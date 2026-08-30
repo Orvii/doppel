@@ -57,7 +57,13 @@ MAX_ETIKET = 40
 #: koyduysa, o beklemeyi atlamak tıklamayı diyalog gelmeden yapmak
 #: demek. Kayıt listesi bu yüzden ayrı bir isim taşıyor; ikisini tek
 #: küme yapmak, birini değiştirirken diğerini sessizce bozardı.
-KAYDEDILMEYEN = frozenset(kuru_mod.SALT_OKUNUR) - {"wait"}
+KAYDEDILMEYEN = frozenset(kuru_mod.SALT_OKUNUR) - {"wait"} | {
+    # Ekran kaydı dünyayı değiştiriyor — dosya yazıyor — ama bir akışa
+    # ait değil. Oynatılan bir akışın sessizce ffmpeg başlatması ve
+    # kimsenin istemediği bir video bırakması, kaydın kendisinden daha
+    # şaşırtıcı olurdu.
+    "record_start", "record_stop",
+}
 
 
 def kaydedilir(arac: str) -> bool:

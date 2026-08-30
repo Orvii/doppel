@@ -35,7 +35,7 @@ class KillSwitch:
     ) -> None:
         self._required = required
         self._window = window
-        self._on_trigger = on_trigger
+        self._kancalar = [on_trigger] if on_trigger else []
         self._event = threading.Event()
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -47,12 +47,30 @@ class KillSwitch:
     def reset(self) -> None:
         self._event.clear()
 
+    def ayrica_cagir(self, geri) -> None:
+        """Tetiklenince çağrılacak bir kanca daha ekler.
+
+        Kurucudaki tek kanca yetmiyordu: acil durdurmanın kapatması
+        gereken şeyler birden fazla ve hepsi `KillSwitch` kurulduktan
+        **sonra** var oluyor. Ekran kaydı bunun somut hâli — Esc x3'te
+        ffmpeg'e `q` yazılmazsa arkada süreç kalıyor ve elde oynatılmayan
+        bir dosya oluyor.
+        """
+        self._kancalar.append(geri)
+
     def trigger(self) -> None:
         """Elle tetikleme — arayüzdeki durdur düğmesi buraya bağlanacak."""
-        if not self._event.is_set():
-            self._event.set()
-            if self._on_trigger:
-                self._on_trigger()
+        if self._event.is_set():
+            return
+        self._event.set()
+        for kanca in self._kancalar:
+            # Bir kancanın patlaması diğerlerini engellememeli: acil
+            # durdurmanın yarısının çalışması, hiç çalışmamasından
+            # yalnızca biraz iyi.
+            try:
+                kanca()
+            except Exception:
+                pass
 
     def check(self) -> None:
         """Tetiklendiyse hata fırlatır. Ajan döngüsünde her adımda çağrılır."""

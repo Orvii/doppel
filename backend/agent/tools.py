@@ -736,6 +736,45 @@ SIDE_CLOSE = {
     },
 }
 
+RECORD_START = {
+    "name": "record_start",
+    "description": (
+        "Starts recording a window in the side workspace to a video file. "
+        "Use it when the user asks for a video or a recording of what you "
+        "do, or wants something they can share afterwards — a screenshot "
+        "shows where you ended up, a video shows how you got there. "
+        "It records ONE window: the one you name, or the last one you "
+        "touched. Windows only draws the desktop that has the keyboard, "
+        "so the whole side desk cannot be captured — if the job moves to "
+        "another window, stop and start again. "
+        "Always call record_stop when you are done; a recording left "
+        "running is stopped when the turn ends and the video ends there."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "hwnd": {
+                "type": "integer",
+                "description": "Window to record, from side_windows. "
+                               "Defaults to the last window you acted on.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+RECORD_STOP = {
+    "name": "record_stop",
+    "description": (
+        "Stops the recording and returns the path of the video file and "
+        "how long it is. Tell the user that path — the file is the whole "
+        "point and they cannot find it otherwise."
+    ),
+    "input_schema": {
+        "type": "object", "properties": {}, "additionalProperties": False,
+    },
+}
+
 WORKFLOW_SAVE = {
     "name": "workflow_save",
     "description": (
@@ -873,6 +912,8 @@ CUSTOM_TOOLS: list[dict[str, Any]] = [
     SIDE_CAPTURE,
     SIDE_ACT,
     SIDE_CLOSE,
+    RECORD_START,
+    RECORD_STOP,
     HEADS_UP,
     WORKFLOW_SAVE,
     WORKFLOW_LIST,

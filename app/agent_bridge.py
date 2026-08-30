@@ -88,6 +88,10 @@ class AgentBridge(QObject):
                 cfg, displays, self._capture, self._kill, approve=self._ask_approval
             )
             self._agent.dispatcher.kuru = self._kuru
+            # Esc x3 kaydı da durdursun. Turun çözülmesini beklemek
+            # yeterli değil: ajan model cevabını beklerken durdurulursa
+            # ffmpeg saniyelerce daha kaydetmeye devam ederdi.
+            self._kill.ayrica_cagir(self._agent.dispatcher.ekran_kaydi.kapat)
         except Exception as exc:
             self.ready.emit(False, str(exc))
             return
@@ -176,6 +180,35 @@ class AgentBridge(QObject):
         self._thread.started.connect(self._worker.run)
         self._worker.done.connect(self._on_done)
         self._thread.start()
+
+    # --- ekran kaydı ------------------------------------------------------
+
+    def kayit_hedefi(self) -> str:
+        """Şu an kaydedilen dosya. Kayıt yoksa boş dize."""
+        if self._agent is None:
+            return ""
+        hedef = self._agent.dispatcher.ekran_kaydi.hedef
+        return str(hedef) if hedef else ""
+
+    def kaydi_durdur(self) -> str:
+        """Arayüzdeki 'Stop recording' düğmesi. Sonucu tek satır olarak
+        döndürüyor.
+
+        Arayüz thread'inden çağrılıyor ve ajan o sırada çalışıyor
+        olabilir; `EkranKaydi` kendi kilidini tutuyor, ffmpeg'e `q`
+        yazmak yarım saniye sürüyor ve o kadarlık bir donma, kaydı
+        durduramamaktan iyi.
+        """
+        if self._agent is None:
+            return ""
+        kayit = self._agent.dispatcher.ekran_kaydi
+        if not kayit.suruyor:
+            return ""
+        try:
+            hedef = kayit.durdur()
+        except Exception as exc:
+            return str(exc)
+        return f"Recording saved: {hedef} ({kayit.sure:.1f}s)."
 
     def remote_session(self):
         """Ajanın bağlı olduğu sunucu — yoksa None."""
