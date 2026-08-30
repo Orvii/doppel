@@ -25,7 +25,7 @@ import math
 import re
 import time
 
-from PySide6.QtCore import QPointF, QRect, QRectF, Qt, QTimer
+from PySide6.QtCore import QEvent, QPointF, QRect, QRectF, Qt, QTimer
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -875,6 +875,11 @@ class NotSatiri(QWidget):
         self._not = (notu or "").strip()
         self._hakkinda = (hakkinda or "").strip()
         self._giris: Giris | None = None
+        # Genişlik başına yükseklik. Metin kurulduktan sonra değişmiyor,
+        # yani önbellek hiç geçersiz kalmıyor. Ölçtüm: önbelleksiz her
+        # çağrı 0.13 ms (genişlik değişince 0.39 ms) ve `Akis` bunu her
+        # satır eklendiğinde bütün notlar için yeniden ödüyordu.
+        self._boy_onbellek: dict[int, int] = {}
         self.setSizePolicy(QSizePolicy.Policy.Preferred,
                            QSizePolicy.Policy.Minimum)
 
@@ -897,6 +902,9 @@ class NotSatiri(QWidget):
         return QRect(0, 0, kalan, 10000)
 
     def heightForWidth(self, width: int) -> int:
+        onbellekli = self._boy_onbellek.get(width)
+        if onbellekli is not None:
+            return onbellekli
         olcu = QFontMetrics(self._yazi())
         kutu = olcu.boundingRect(
             self._metin_kutusu(width),
@@ -905,7 +913,9 @@ class NotSatiri(QWidget):
         yukseklik = kutu.height() + self.PAY_Y * 2
         if self._hakkinda:
             yukseklik += self.ETIKET_H
-        return max(ROW_H + 6, yukseklik)
+        sonuc = max(ROW_H + 6, yukseklik)
+        self._boy_onbellek[width] = sonuc
+        return sonuc
 
     def hasHeightForWidth(self) -> bool:
         return True
@@ -1021,13 +1031,51 @@ class Akis(QWidget):
     Önceden burada yalnızca son cevap duruyordu; ne yaptığını görmek için
     ana pencereye bakman gerekiyordu. Oysa çubuk zaten gözünün olduğu yer.
     Adımlar buraya, her biri kendi çizimiyle düşüyor.
+
+    ## Satır sayısının bir tavanı var, çünkü olmayınca donuyordu
+
+    Uzun bir turdan sonra yukarı kaydırmak tutukluyordu. Ölçtüm:
+    kaydırma maliyeti **çocuk widget sayısıyla** artıyor, içerik boyuyla
+    değil — aynı 22000 pikselde 1000 çocukla tekerlek adımı 81 ms,
+    20 çocukla 3.9 ms. Gerçek dökümde tekerlek adımı 1000 satırda 33 ms,
+    yani iki kare.
+
+    İkinci sebep `heightForWidth`in O(n) olması: `CommandBar._fit_reply`
+    onu **her satırda** soruyor, yani satır eklemek kareselleşiyordu.
+
+    Önce / sonra (satır ekleme + her satırda `heightForWidth`):
+
+        n     ekleme          satır başı        tekerlek adımı
+        20    170 → 45 ms     8.5 → 2.3 ms      0.33 → 0.57 ms
+        200   1123 → 352 ms   5.6 → 1.8 ms      2.71 → 0.98 ms
+        1000  22919 → 2810 ms 22.9 → 2.8 ms    32.99 → 7.03 ms
+
+    Satır başı süre artık n ile büyümüyor. Düşen satırlar kaybolmuyor:
+    tur geçmişi ayrı tutuluyor, düşen yalnızca yüzen çubuğun kopyası.
+    Ölçümün tamamı `tests/test_dokum_olcek.py` docstring'inde.
     """
+
+    #: Dökümde tutulan en çok satır. Sınırsızdı; ölçtüğüm donma buydu.
+    #:
+    #: Kaydırma maliyeti **çocuk widget sayısıyla** artıyor, içerik
+    #: boyuyla değil: aynı 22000 pikselde 1000 çocukla tekerlek adımı
+    #: 81 ms, 20 çocukla 3.9 ms. 1000 satırlık gerçek bir dökümde adım
+    #: 33 ms — iki kare, yani yukarı kaydırma tutukluk olarak görülüyor.
+    #: 240 satırda adım 4 ms'in altında kalıyor ve tavanı
+    #: (`REPLY_MAX_HEIGHT`) çok aşan bir geçmiş zaten çubukta değil
+    #: geçmiş panelinde okunuyor.
+    EN_COK_SATIR = 240
 
     def __init__(self, t: Tokens) -> None:
         super().__init__()
         self.t = t
         self._son_metin: AkanMetin | None = None
         self._son_adim: AdimSatiri | None = None
+        # Genişlik başına toplam yükseklik. `heightForWidth` bütün
+        # çocukları dolaşıyor ve `_fit_reply` onu her satırda çağırıyor:
+        # önbelleksiz satır eklemek kareselleşiyordu — 1000 satır 22.9
+        # saniye. Geçersiz kılma `event()` içinde, düzen isteğinde.
+        self._boy_onbellek: dict[int, int] = {}
         self._kutu = QVBoxLayout(self)
         self._kutu.setContentsMargins(0, 10, 0, 6)
         self._kutu.setSpacing(2)
@@ -1042,6 +1090,7 @@ class Akis(QWidget):
                 oge.deleteLater()
         self._son_metin = None
         self._son_adim = None
+        self._boy_onbellek.clear()
         self.updateGeometry()
 
     def is_empty(self) -> bool:
@@ -1088,6 +1137,10 @@ class Akis(QWidget):
             self._son_metin.set_live(True)
             self._ekle(self._son_metin)
         self._son_metin.append(parca)
+        # Elle geçersiz kılınıyor: çocuğun `updateGeometry` çağrısı düzen
+        # isteğini **kuyruğa** koyuyor, çağıran ise `heightForWidth`i
+        # hemen soruyor. Olay işlenene kadar bayat boy dönerdi.
+        self._boy_onbellek.clear()
         self.updateGeometry()
 
     def say(self, metin: str) -> None:
@@ -1111,11 +1164,52 @@ class Akis(QWidget):
         if hasattr(w, "anime_et"):
             w.anime_et()
         self._kutu.addWidget(w)
+        self._buda()
+        self._boy_onbellek.clear()
         self.updateGeometry()
+
+    def _buda(self) -> None:
+        """Sınırı aşan en eski satırları düşürür.
+
+        Düşürülen satır **kaybolmuyor**: tur geçmişi ayrı tutuluyor ve
+        panelde tamamı duruyor. Burada düşen yalnızca yüzen çubuğun
+        kendi kopyası. Sessizce kırpmak yerine sınırı burada, tek yerde
+        tutuyorum ki neyin neden düştüğü okunabilsin.
+        """
+        while self._kutu.count() > self.EN_COK_SATIR:
+            oge = self._kutu.takeAt(0).widget()
+            if oge is None:
+                continue
+            if oge is self._son_metin:
+                self._son_metin = None
+            if oge is self._son_adim:
+                self._son_adim = None
+            # Saatten elle düşürülüyor. `hideEvent`e güvenmek yetmiyor:
+            # hiç görünmemiş bir satır `setParent(None)` ile gizlenme
+            # olayı almıyor ve abone olarak kalıyordu. Ölçtüm — 600
+            # satır eklendikten sonra 240 satırlık dökümde 600 abone
+            # duruyordu, ve `Clock.subscribe` her abonelikte listeyi
+            # baştan tarıyor: budanmış satırlar aboneliği kareselleştirir.
+            tik = getattr(oge, "_tick", None)
+            if tik is not None:
+                clock().unsubscribe(tik)
+            oge.setParent(None)
+            oge.deleteLater()
+
+    def event(self, olay) -> bool:
+        # Bir çocuk kendi boyunu değiştirdiğinde Qt buraya düzen isteği
+        # yolluyor: önbelleği tam orada bırakmak, akan metnin uzadığını
+        # görmemek olurdu.
+        if olay.type() == QEvent.Type.LayoutRequest:
+            self._boy_onbellek.clear()
+        return super().event(olay)
 
     def heightForWidth(self, width: int) -> int:
         if self.is_empty():
             return 0
+        onbellekli = self._boy_onbellek.get(width)
+        if onbellekli is not None:
+            return onbellekli
         toplam = self._kutu.contentsMargins().top() + self._kutu.contentsMargins().bottom()
         for i in range(self._kutu.count()):
             w = self._kutu.itemAt(i).widget()
@@ -1126,6 +1220,7 @@ class Akis(QWidget):
             toplam += max(h, w.minimumHeight())
             if i:
                 toplam += self._kutu.spacing()
+        self._boy_onbellek[width] = toplam
         return toplam
 
     def hasHeightForWidth(self) -> bool:
