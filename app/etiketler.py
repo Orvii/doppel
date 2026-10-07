@@ -64,6 +64,8 @@ TOOL_LABEL = {
     "side_capture": "Looking at the side desk",
     "side_act": "Working in the side desk",
     "side_close": "Closing the side desk",
+    "record_start": "Starting the recording",
+    "record_stop": "Stopping the recording",
     "heads_up": "A note",
     "workflow_save": "Saving a workflow",
     "workflow_list": "Listing workflows",

@@ -141,6 +141,7 @@ through a GUI is the most expensive way to do almost anything:
 | `button_write` `button_remove` | The agent proposes a button on the bar for a job you keep repeating. |
 | `remote_connect` `remote_run` `remote_read` `remote_write` `remote_list` | An SSH server as a second machine, with its own approval gate. |
 | `side_launch` `side_windows` `side_capture` `side_act` `side_close` | The invisible workspace above. |
+| `record_start` `record_stop` | Records a side-desk window to an mp4 in `runs/`. Windows only draws the desktop that holds the keyboard, so it captures one window, not the whole desk. |
 | `workflow_save` `workflow_list` `workflow_run` `workflow_remove` | Records a finished job and replays it with no model call at all. |
 | `heads_up` | Writes a note about what could go wrong in the thing it is about to do. Changes nothing, asks nothing. |
 

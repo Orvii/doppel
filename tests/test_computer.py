@@ -1890,8 +1890,19 @@ class TestArayaGirme:
             def reset(self): pass
             def check(self): pass
 
+        class SahteEkranKaydi:
+            """Tur biterken `Agent.run` kaydı kapatıyor — sahtenin de
+            kapanabilmesi gerekiyor."""
+
+            def __init__(self):
+                self.kapandi = False
+
+            def kapat(self):
+                self.kapandi = True
+
         class SahteDispatcher:
             kuru = False
+            ekran_kaydi = SahteEkranKaydi()
 
             def tur_basladi(self, talimat=""):
                 pass

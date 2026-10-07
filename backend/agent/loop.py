@@ -229,6 +229,13 @@ class Agent:
             metin = self._sur(instruction, turn, max_steps)
             return metin
         finally:
+            # Koşu bitti: kayıt sürüyorsa burada duruyor. Ajan
+            # `record_stop` demeyi unutabilir, tur bir hatayla ya da
+            # Esc x3 ile kesilmiş olabilir — her üç yolda da arkada
+            # ffmpeg kalmamalı ve dosya oynatılabilir olmalı. `kapat`
+            # hata yutuyor: kapanış yolundaki bir istisna, raporun hiç
+            # yazılmamasına yol açardı.
+            self.dispatcher.ekran_kaydi.kapat()
             eksik = self._raporu_kapat(metin)
             if eksik:
                 turn.on_rapor(rapor_mod.not_metni(eksik))

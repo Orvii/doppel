@@ -384,6 +384,13 @@ def main() -> int:
             masa_gorunumu.kod.terminal_ciktisi("terminal", text)
         if tool == "side_close" and not is_error:
             masa_gorunumu.masa_kapandi()
+        # Kayıt rozeti: kırmızı nokta ve süre, durum şeridinde. Kaydın
+        # açık kaldığı süre dakikalarla ölçülüyor ve bu sürenin görünür
+        # olmaması, sonunda kimsenin istemediği bir video demek.
+        if tool == "record_start" and not is_error:
+            window.kayit_basladi(bridge.kayit_hedefi())
+        if tool == "record_stop":
+            window.kayit_bitti(text if not is_error else "")
         if tool.startswith("workflow_") and not is_error:
             akis_gorunumu.yenile()
         if tool.startswith("button_") and not is_error:
@@ -405,6 +412,9 @@ def main() -> int:
             bar.set_status(f"{tool}: {text[:120]}")
 
     def on_finished(text: str) -> None:
+        # Koşu biterken çekirdek kaydı zaten kapatıyor; rozet de
+        # kapanmalı, yoksa şeritte durmayan bir kayıt görünür.
+        window.kayit_bitti()
         bar.set_busy(False)
         bar.show_operation(None)
         bar.set_status("")
@@ -437,6 +447,7 @@ def main() -> int:
         window.status.set_line(satir)
 
     def on_failed(why: str) -> None:
+        window.kayit_bitti()
         bar.set_busy(False)
         bar.show_operation(None)
         bar.set_status("")
@@ -488,6 +499,11 @@ def main() -> int:
     bar.kuru_degisti.connect(kuru_degisti)
     gecmis.tekrarla.connect(bar.submit_text)
     bar.set_commands(bridge.commands)
+    def kaydi_durdur() -> None:
+        satir = bridge.kaydi_durdur()
+        window.kayit_bitti(satir or "Recording stopped.")
+
+    window.status.kayit.stop_requested.connect(kaydi_durdur)
     window.stop_requested.connect(bridge.stop)
     bar.stop_requested.connect(bridge.stop)
     app.aboutToQuit.connect(bridge.shutdown)

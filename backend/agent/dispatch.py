@@ -26,6 +26,7 @@ from ..computer import uia
 from ..computer import windows as win
 from ..computer.capture import ScreenCapture
 from ..computer.displays import DisplayMap
+from ..computer.kayit import EkranKaydi, KayitHatasi
 from ..computer.masaustu import Calisma, MasaustuHatasi, pencere_bilgisi
 from ..computer.mesaj import DesteklenmiyorHatasi, Girdi
 from ..computer.terminal import TerminalError, TerminalRegistry
@@ -124,6 +125,9 @@ class Dispatcher:
         #: eylemde kare göndermek tur başına ~1500 görsel token ve
         #: model zaten nereye tıkladığını biliyor. Berkay bilmiyor.
         self.last_side_frame: bytes | None = None
+        #: Yan masanın ekran kaydı. ffmpeg süreci ancak `record_start`
+        #: çağrılınca doğuyor; nesnenin kendisi bedava.
+        self.ekran_kaydi = EkranKaydi()
         #: (yetenek adı, panel) — arayüzün alıp çizeceği son panel.
         self.last_panel: tuple[str, dict] | None = None
         #: Son yazılan dosyalar — arayüz kod panelini bunlardan açıyor.
@@ -146,6 +150,10 @@ class Dispatcher:
 
     def shutdown(self) -> None:
         """Açık PTY'leri kapatır. Yoksa süreçler ajan bittikten sonra yaşar."""
+        # Kayıt ilk sırada: ffmpeg'e `q` yazıp beklemek mp4'ü
+        # oynatılabilir bırakıyor, sonraki adımlar masaüstünü kapatıp
+        # kaydedilen pencereyi altından çekiyor.
+        self.ekran_kaydi.kapat()
         self.terminals.close_all()
         # MCP sunucuları da süreç: kapatılmazlarsa uygulama kapandıktan
         # sonra arkada `node` süreçleri kalıyor.
@@ -687,7 +695,51 @@ class Dispatcher:
         except Exception:
             self.last_side_frame = None
 
+    # --- ekran kaydı ------------------------------------------------------
+
+    def _do_record_start(self, payload: dict[str, Any]) -> ToolOutcome:
+        """Yan masadaki bir pencerenin kaydını başlatır.
+
+        `hwnd` verilmezse ajanın en son dokunduğu pencere kullanılıyor.
+        Hiç dokunmadıysa ve yan masada tek pencere varsa o. İkisi de yoksa
+        hata: bir pencere seçmek modelin işi, tahmin etmek yanlış işi
+        kaydetmenin en kolay yolu.
+        """
+        hwnd = payload.get("hwnd") or self.last_side_hwnd
+        if not hwnd:
+            pencereler = self._side().pencereler()
+            if len(pencereler) == 1:
+                hwnd = pencereler[0].hwnd
+        if not hwnd:
+            raise ToolError(
+                "Nothing to record yet. Launch something with side_launch, "
+                "then pick a window with side_windows."
+            )
+        try:
+            hedef = self.ekran_kaydi.basla(hwnd=int(hwnd))
+        except KayitHatasi as exc:
+            raise ToolError(str(exc)) from None
+        self.last_side_hwnd = int(hwnd)
+        return ToolOutcome(
+            content=f"Recording window {int(hwnd)} to {hedef}. "
+            "Call record_stop when the job is done."
+        )
+
+    def _do_record_stop(self, _payload: dict[str, Any]) -> ToolOutcome:
+        try:
+            hedef = self.ekran_kaydi.durdur()
+        except KayitHatasi as exc:
+            raise ToolError(str(exc)) from None
+        if hedef is None:
+            return ToolOutcome(content="Nothing was being recorded.")
+        return ToolOutcome(
+            content=f"Recording saved: {hedef} ({self.ekran_kaydi.sure:.1f}s)."
+        )
+
     def _do_side_close(self, _payload: dict[str, Any]) -> ToolOutcome:
+        # Kayıt önce duruyor: masaüstü kapanınca kaydedilen pencere de
+        # gidiyor ve o noktada ffmpeg'in yazacağı bir şey kalmıyor.
+        self.ekran_kaydi.kapat()
         if self.side is None:
             return ToolOutcome(content="The side desk is already closed.")
         self.side.kapat()

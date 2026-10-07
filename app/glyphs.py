@@ -420,7 +420,38 @@ def _uyari(p: QPainter, ana: str, sap: str) -> None:
 
 #: Araç adı -> çizim. Aile bazında, araç bazında değil: on yedi tıklama
 #: aracının hepsi aynı işi yapıyor ve on yedi ayrı çizim gürültü olurdu.
+def _kayit(p: QPainter, ana: str, sap: str) -> None:
+    """Kayıt. Dolu bir daire ve çevresinde bir halka.
+
+    Kamera çizmek daha anlatıcı olurdu ama 24 pikselde kamera bir kutuya
+    dönüyor ve `pencere` çiziminden ayırt edilemiyor. Dolu daire kayıt
+    düğmesinin evrensel dili; halka onu `imlec`in ucundan ve durum
+    ışığından ayırıyor.
+    """
+    p.setPen(_pen(sap))
+    p.drawEllipse(QPointF(12, 12), 8.0, 8.0)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(ana))
+    p.drawEllipse(QPointF(12, 12), 4.2, 4.2)
+    p.setBrush(Qt.BrushStyle.NoBrush)
+
+
+def _kayit_dur(p: QPainter, ana: str, sap: str) -> None:
+    """Kaydı durdur. Aynı halka, içinde daire yerine kare.
+
+    Kayıt ve durdurma yan yana bir dökümde okunuyor; ikisi de daire
+    olsaydı satırlar birbirinin aynısı görünürdü.
+    """
+    p.setPen(_pen(sap))
+    p.drawEllipse(QPointF(12, 12), 8.0, 8.0)
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(ana))
+    p.drawRect(QRectF(8.6, 8.6, 6.8, 6.8))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+
+
 GLYPHS = {
+    "kayit": _kayit, "kayit_dur": _kayit_dur,
     "goz": _goz, "mercek": _mercek, "imlec": _imlec, "surukle": _surukle,
     "klavye": _klavye, "tus": _tus, "kaydir": _kaydir, "pencere": _pencere,
     "kabuk": _kabuk, "agac": _agac, "sayfa": _sayfa, "klasor": _klasor,
@@ -455,6 +486,7 @@ TOOL_GLYPH = {
     "button_write": "yetenek", "button_remove": "yetenek",
     "side_launch": "pencere", "side_windows": "pencere",
     "side_capture": "mercek", "side_act": "imlec", "side_close": "pencere",
+    "record_start": "kayit", "record_stop": "kayit_dur",
     "workflow_save": "akis", "workflow_list": "akis",
     "workflow_remove": "akis", "workflow_run": "yenile",
     "heads_up": "uyari",
