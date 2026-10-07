@@ -28,11 +28,18 @@ try:  # Windows: gerçek modül ve gerçek API'ler
 except (ImportError, AttributeError):  # Linux: adlar yok
     _GERCEK = False
 
+
+class WindowsGerekli(RuntimeError):
+    """Windows API'si yalnızca Windows'ta çağrılabilir.
+
+    İki platformda da tanımlı: içe aktaran taraf koşullu bakmak zorunda
+    kalmasın. Windows'ta hiç fırlatılmaz.
+    """
+
+
 if _GERCEK:  # pragma: no cover - Windows'ta gerçek modül
     pass
 else:
-    class WindowsGerekli(RuntimeError):
-        """Windows API'si yalnızca Windows'ta çağrılabilir."""
 
     class _SahteIslev:
         """Sahte DLL fonksiyonu: atama kabul eder, çağrıda açıkça patlar."""

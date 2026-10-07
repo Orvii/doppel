@@ -87,6 +87,27 @@ class TestOturum:
 
 
 class TestGirdiSecimi:
+    def test_windows_makinede_x11_secenekleri_secili_degil(self):
+        """Bu makinede (Windows) seçim win32: X11 yolları hiç sunulmaz."""
+        if sys.platform != "win32":
+            pytest.skip("Windows makinesinde anlamlı")
+        secim = erisim.girdi_sec()
+        assert secim.ad == "win32"
+        assert secim.sinif is None  # kayıtlı arka uç yok
+
+    def test_x11_surucusu_windows_ta_ice_aktarilabilir(self):
+        """Linux sürücü modülleri Windows'ta da içe aktarılabilir kalmalı.
+
+        Sürücüler platform dalı içermez — seçim `erisim`de. Windows'ta
+        yalnızca içe aktarılır, çağrılmaz; bu yüzden modül düzeyinde
+        Windows API'si görünmemeli.
+        """
+        from backend.computer import girdi_x11, goruntu_x11
+
+        s = girdi_x11.XdotoolSurucu({})
+        assert callable(s.move_to) and callable(s.type_text)
+        assert callable(goruntu_x11.xrandr_monitorleri_coz)
+
     def test_headless_anlasilir_hata(self, linux):
         secim = erisim.girdi_sec()
         assert secim.ad is None
@@ -343,6 +364,36 @@ class TestYdotoolKomutlari:
         s, _ = self._surucu(monkeypatch)
         with pytest.raises(Desteklenmiyor):
             s.cursor_position()
+
+
+class TestEkranSecimiVeEnvanteri:
+    def test_headless_kayit_yoksa_hata(self, linux):
+        secim = erisim.ekran_sec()
+        assert secim.ad is None
+        assert "Wayland" in secim.hata
+
+    def test_x11_xrandr(self, linux, monkeypatch):
+        monkeypatch.setenv("DISPLAY", ":0")
+        assert erisim.ekran_sec().ad == "xrandr"
+
+    def test_kayitli_ekran_arka_ucu_ve_envanter(self, linux, monkeypatch):
+        monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+
+        class SahteEnvanter:
+            def __init__(self, env):
+                self.env = env
+
+            def monitorler(self):
+                return DisplayMap([Display(0, 0, 0, 800, 600, True)])
+
+        erisim.surucu_kaydet("envantartest", SahteEnvanter, lambda: True, tur="ekran")
+        try:
+            from backend.computer import displays as displays_mod
+
+            m = displays_mod.enumerate_displays()
+            assert len(m) == 1 and m[0].width == 800
+        finally:
+            erisim._suruculer.pop("envantartest", None)
 
 
 class TestKomut:

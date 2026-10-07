@@ -12,9 +12,17 @@ Linux'un içe aktarma yüzeyi **simüle edilip** ölçülüyor:
 - Ortam `sys.platform` üzerinden değil, yalnızca isim düzeyinde
   kısıtlanıyor — `erisim` seçimi için DISPLAY yoklaması yapılıyor.
 
+**Simülasyon gerçek Linux'tan bir noktada daha katı:** `ctypes.wintypes`
+da engelleniyor, oysa CPython 3.12'de bu modül Linux'ta içe aktarılabilir
+(saf Python). Katı olmak güvenli yönde: burada geçen bir modül, gerçek
+Linux'ta da geçer. Kaldırmak yerine bilinçli bırakıldı — `win32_kabuk`
+zaten iki durumu da karşılıyor.
+
 Bu test Windows'ta koşarken Linux'taki içe aktarmayı doğruluyor; çünkü
 gerçek Linux'ta koşamıyoruz. Kanıtladığı şey dar ama tam: **bu modüller
 içe aktarılabilir ve çağrıları sessizce değil, açık hata ile düşer.**
+Aynı senaryo Linux'ta da koşar (orada engelleme kısmen gereksiz ama
+zararsız); yani dosya iki platformda da değişmeden çalışır.
 
 Sınırı dürüstçe: bu, "Linux'ta her şey çalışır" demek değil — X
 sunucusuna, xdotool'a ya da gerçek API çağrılarına dokunulmuyor. Onların
@@ -135,12 +143,6 @@ class TestLinuxIceAktarma:
     @pytest.fixture(scope="class")
     def sonuc(self):
         return _calistir("Linux içe aktarma simülasyonu")
-
-    def test_yalniz_bu_ortamda_dogrulanir(self):
-        # Simülasyon Windows'ta anlamlı: orada win32 adları gerçekten var
-        # ve kaldırılınca Linux yüzeyi oluşuyor.
-        if sys.platform != "win32":
-            pytest.skip("simülasyon Windows'ta anlamlı")
 
     def test_cozulenen_hepsi_ice_aktarilir(self, sonuc):
         eksik = [m for m in sonuc["ok"]]
