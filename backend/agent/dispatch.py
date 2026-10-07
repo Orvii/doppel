@@ -290,9 +290,42 @@ class Dispatcher:
             return ToolOutcome(content=metin or to_text(panel))
         return ToolOutcome(content=str(result) if result is not None else "OK")
 
+    def _hedef_etiketi(self, name: str, payload: dict[str, Any]) -> str:
+        """Tıklanacak denetimin UIA etiketi. Okunamıyorsa boş dize.
+
+        Okunamadığında güvenli taraf SAFE: UIA'nın sustuğu yerde (oyun,
+        tuval, yükseltilmiş pencere) her tıklamaya onay sormak, sıradan
+        bir tıklamayı sürekli onaya düşürür ve yorgunluk kapıyı işlevsiz
+        kılar; pencere başlığı süzgeci o yerlerde yine çalışıyor.
+        """
+        if name not in gate.CLICK_TOOLS:
+            return ""
+        nokta = payload.get("coordinate")
+        try:
+            if nokta is None:
+                # Koordinatsız tıklama imlecin durduğu yere gidiyor;
+                # etiket oradan okunuyor.
+                vx, vy = kb.cursor_position()
+            elif isinstance(nokta, (list, tuple)) and len(nokta) == 2:
+                vx, vy = self._virtual(nokta)
+            else:
+                return ""
+            imza = imza_noktada(vx, vy)
+        except Exception:
+            # Ölü COM, erişim reddi, kırpılmış koordinat: hepsi normal,
+            # etiketsiz karar kapıyı düşürmemeli. Koordinat gerçekten
+            # bozuksa işleyici kendi hatasını zaten verecek.
+            return ""
+        return imza.ad if imza is not None else ""
+
     def _gate(self, name: str, payload: dict[str, Any]) -> None:
         """Riskli eylemde onay ister. Onay yoksa eylem hiç çalışmaz."""
-        verdict = gate.classify(name, payload, window_title=win.foreground_title())
+        verdict = gate.classify(
+            name,
+            payload,
+            window_title=win.foreground_title(),
+            label=self._hedef_etiketi(name, payload),
+        )
         if not verdict.needs_confirmation:
             return
 

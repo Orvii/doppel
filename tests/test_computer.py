@@ -322,6 +322,132 @@ class TestDispatcherGate:
         d.run("run_shell", {"command": "Get-Process | Format-List"})
         assert asked == []
 
+    # --- tıklanan denetimin etiketi ---------------------------------------
+
+    def _tiklamayi_izle(self, monkeypatch, baslik="Notepad"):
+        """Fareyi gerçekten oynatmadan tıklamayı ve başlığı sahteler."""
+        import backend.agent.dispatch as dispatch_mod
+        from backend.computer import input as kb
+
+        monkeypatch.setattr(dispatch_mod.win, "foreground_title", lambda: baslik)
+        tiklanan = []
+        monkeypatch.setattr(
+            kb, "click",
+            lambda vx, vy, button="left", count=1: tiklanan.append((vx, vy, button)),
+        )
+        return tiklanan
+
+    def test_gonder_etiketli_tik_durduruluyor(self, monkeypatch):
+        """Etiket "Gönder" ama pencere sıradan. Eskiden kapı bunu görmezdi."""
+        import backend.agent.dispatch as dispatch_mod
+        from backend.agent.dispatch import Denied
+        from backend.workflows.imza import Imza
+
+        tiklanan = self._tiklamayi_izle(monkeypatch)
+        monkeypatch.setattr(
+            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("ButtonControl", "Gönder")
+        )
+        asked = []
+        d = self._dispatcher(approve=lambda *a: asked.append(a) or False)
+        with pytest.raises(Denied):
+            d.run("left_click", {"coordinate": [10, 10]})
+        assert tiklanan == [], "reddedilen tıklama yine de yapıldı"
+        assert asked and "send" in asked[0][2]
+
+    def test_iyi_huylu_etiket_sormuyor(self, monkeypatch):
+        import backend.agent.dispatch as dispatch_mod
+        from backend.workflows.imza import Imza
+
+        tiklanan = self._tiklamayi_izle(monkeypatch)
+        monkeypatch.setattr(
+            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("ButtonControl", "Kaydet")
+        )
+        asked = []
+        d = self._dispatcher(approve=lambda *a: asked.append(a) or True)
+        d.run("left_click", {"coordinate": [10, 10]})
+        assert asked == []
+        assert tiklanan == [(10, 10, "left")]
+
+    def test_etiket_okunamayinca_tiklama_sormuyor(self, monkeypatch):
+        """Erişim reddi (oyun, tuval): etiketsiz karar kapıyı düşürmemeli.
+
+        Orada her tıklamayı onaya düşürmek onay yorgunluğu üretir; pencere
+        başlığı süzgeci o yerlerde yine çalışıyor.
+        """
+        import backend.agent.dispatch as dispatch_mod
+
+        def patla(_vx, _vy):
+            raise RuntimeError("E_ACCESSDENIED")
+
+        tiklanan = self._tiklamayi_izle(monkeypatch)
+        monkeypatch.setattr(dispatch_mod, "imza_noktada", patla)
+        asked = []
+        d = self._dispatcher(approve=lambda *a: asked.append(a) or True)
+        d.run("left_click", {"coordinate": [10, 10]})
+        assert asked == []
+        assert tiklanan == [(10, 10, "left")]
+
+    def test_etiket_okunamasa_da_baslik_yetiyor(self, monkeypatch):
+        import backend.agent.dispatch as dispatch_mod
+        from backend.agent.dispatch import Denied
+
+        tiklanan = self._tiklamayi_izle(monkeypatch, baslik="Garanti BBVA - Ödeme")
+        monkeypatch.setattr(dispatch_mod, "imza_noktada", lambda vx, vy: None)
+        d = self._dispatcher(approve=lambda *_a: False)
+        with pytest.raises(Denied):
+            d.run("left_click", {"coordinate": [10, 10]})
+        assert tiklanan == []
+
+    def test_sag_tik_baglam_menusu_durduruluyor(self, monkeypatch):
+        """Sağ tık da bir düğmeyi çalıştırabiliyor; süzülen kümeye yeni girdi."""
+        import backend.agent.dispatch as dispatch_mod
+        from backend.agent.dispatch import Denied
+        from backend.workflows.imza import Imza
+
+        tiklanan = self._tiklamayi_izle(monkeypatch)
+        monkeypatch.setattr(
+            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("MenuItemControl", "Remove")
+        )
+        d = self._dispatcher(approve=lambda *_a: False)
+        with pytest.raises(Denied):
+            d.run("right_click", {"coordinate": [10, 10]})
+        assert tiklanan == []
+
+    def test_yeni_isleyici_varsayilan_olarak_kapidan_geciyor(self, monkeypatch):
+        """Depoya `_do_*` eklenip kapı listesine yazılmazsa eskiden sorgusuz
+        geçerdi. Açık liste sayesinde artık varsayılan onay: yeni aracın
+        kapısız kaldığını ancak bir şeyi bozunca fark etmek olurdu."""
+        import backend.agent.dispatch as dispatch_mod
+        from backend.agent.dispatch import Denied, Dispatcher, ToolOutcome
+
+        monkeypatch.setattr(dispatch_mod.win, "foreground_title", lambda: "Notepad")
+        monkeypatch.setattr(
+            Dispatcher, "_do_gelecek_arac",
+            lambda self, payload: ToolOutcome(content="çalıştı"), raising=False,
+        )
+        d = self._dispatcher(approve=lambda *_a: False)
+        with pytest.raises(Denied):
+            d.run("gelecek_arac", {})
+
+    def test_office_save_uzerine_yazma_durduruluyor(self, monkeypatch, tmp_path):
+        import backend.agent.dispatch as dispatch_mod
+        from backend.agent.dispatch import Denied
+        from backend.computer import files
+        from backend.office.text import TextDocument
+
+        monkeypatch.setattr(dispatch_mod.win, "foreground_title", lambda: "Word")
+
+        kaynak = tmp_path / "belge.docx"
+        TextDocument.create(str(kaynak)).save()
+        hedef = tmp_path / "rapor.docx"
+        files.write(str(hedef), "eski içerik")
+
+        d = self._dispatcher(approve=lambda *_a: False)
+        d.office.open("belge", str(kaynak))
+        with pytest.raises(Denied):
+            d.run("office_save", {"name": "belge", "path": str(hedef)})
+        assert hedef.read_bytes() == b"eski i\xc3\xa7erik"
+
 
 class TestFiles:
     def test_yaz_ve_oku_utf8(self, tmp_path):
@@ -409,6 +535,141 @@ class TestWriteGate:
     def test_tus_gonderme_onay_istemez(self):
         from backend.safety.gate import classify
         assert not classify("terminal_send", {"name": "t", "key": "enter"}).needs_confirmation
+
+
+class TestClickGate:
+    """Tıklanan denetimin etiketi. Kapının yalnızca pencere başlığına
+    baktığı sürümde bir "Gönder" ya da "Ödeme Yap" düğmesi sıradan bir
+    pencerenin içinde sorgusuz çalışıyordu — tıklamanın kendisi geri
+    alınamaz olduğu için bu, kapının en pahalı açığıydı.
+    """
+
+    def test_gonder_dugmesi_onay_ister(self):
+        from backend.safety.gate import classify
+        for etiket in ("Gönder", "GÖNDER", "Send", "Submit", "Paylaş", "Ödeme Yap",
+                       "Satın Al", "Sil", "SİL", "Delete", "Kaldır", "Yayınla"):
+            v = classify("left_click", {"coordinate": [10, 10]}, label=etiket)
+            assert v.needs_confirmation, etiket
+            assert v.reason
+
+    def test_kaydet_dugmesi_sormuyor(self):
+        """Kaydetme geri alınabilir; onu da sormak sürekli yanlış alarm olurdu.
+
+        Kapı bu dosyada bir kez `format`/`Format-List` yüzünden aynı hataya
+        düştü: boş yere uyaran kapı görmezden gelinir.
+        """
+        from backend.safety.gate import classify
+        for etiket in ("Kaydet", "Save", "Save As", "Gönderen", "Silgi",
+                       "İptal", "Cancel", "Kaydet ve Kapat"):
+            v = classify("left_click", {"coordinate": [10, 10]},
+                         window_title="belge.docx - Word", label=etiket)
+            assert not v.needs_confirmation, etiket
+
+    def test_etiket_okunamazsa_sormuyor(self):
+        # Oyun, tuval, yükseltilmiş pencere: UIA susuyor ve orada her
+        # tıklamaya sormak onay yorgunluğu üretir. Başlık süzgeci o
+        # yerlerde yine devrede.
+        from backend.safety.gate import classify
+        assert not classify("left_click", {"coordinate": [10, 10]},
+                            window_title="Notepad", label="").needs_confirmation
+
+    def test_baslik_etiketi_ezebiliyor(self):
+        # Etiket "Kaydet" olsa bile banka penceresinde sormaya devam: başlık
+        # riskli bir bağlam söylüyorsa etiketin iyi huylu olması yetmiyor.
+        from backend.safety.gate import classify
+        v = classify("left_click", {"coordinate": [10, 10]},
+                     window_title="Garanti BBVA - Ödeme", label="Kaydet")
+        assert v.needs_confirmation
+
+    def test_sag_ve_orta_tik_da_suzuluyor(self):
+        # İkisi de bir düğmeyi, bağlam menüsündeki "Sil"i çalıştırabiliyor.
+        from backend.safety.gate import classify
+        for ad in ("right_click", "middle_click", "triple_click"):
+            assert classify(ad, {"coordinate": [1, 1]},
+                            window_title="X - Ödeme").needs_confirmation, ad
+            assert classify(ad, {"coordinate": [1, 1]},
+                            label="Sil").needs_confirmation, ad
+            assert not classify(ad, {"coordinate": [1, 1]},
+                                label="Kaydet").needs_confirmation, ad
+
+
+class TestUnknownToolGate:
+    #: Desenlerle süzülen araçlar: SAFE_TOOLS'ta olmamaları doğru, çünkü
+    #: kararı payload'a ve pencereye göre değişiyor.
+    SUZULEN = {
+        "run_shell", "write_file", "edit_file", "terminal_send", "type",
+        "key", "left_click", "right_click", "middle_click", "double_click",
+        "triple_click", "left_click_drag", "office_save", "side_launch",
+        "side_act",
+    }
+
+    def test_her_isleyici_kapida_hesapli(self):
+        """Her `_do_*` ya süzülüyor ya açık listede olacak.
+
+        Bu, bu görevin kapattığı asıl delik: yeni bir araç eklenip kapıya
+        yazılmadığında eskiden sessizce sorgusuz geçiyordu. Artık böyle
+        bir aracın testte de görünmesi gerek — süzülecek mi, açık listeye
+        mi girecek, kararı vermeden depo yeşile dönmüyor.
+        """
+        from backend.agent.dispatch import Dispatcher
+        from backend.agent.tools import CUSTOM_TOOL_NAMES
+        from backend.safety import gate
+
+        isleyiciler = {m[4:] for m in dir(Dispatcher) if m.startswith("_do_")}
+        cozulmemis = isleyiciler - self.SUZULEN - gate.SAFE_TOOLS
+        assert cozulmemis == set(), cozulmemis
+        # Modelin görebildiği araç kümesi de aynı hesabı verecek.
+        cozulmemis_ozel = set(CUSTOM_TOOL_NAMES) - self.SUZULEN - gate.SAFE_TOOLS
+        assert cozulmemis_ozel == set(), cozulmemis_ozel
+
+    def test_taninmayan_arac_onay_ister(self):
+        # Açık liste: `SAFE_TOOLS`'a yazılmayan her ad soruyor. Depoya araç
+        # eklenip listeye yazılmadığında yeni araç sessizce kapısız kalmaz.
+        from backend.safety.gate import classify
+        v = classify("gelecek_arac", {})
+        assert v.needs_confirmation
+        assert "gelecek_arac" in v.reason
+
+    def test_bilinen_araclar_onay_istemiyor(self):
+        # Kendi içinde onay isteyenler dâhil: ikinci soru yorgunluk olurdu.
+        from backend.safety.gate import classify
+        for ad, girdi in [
+            ("wait", {}), ("screenshot", {}), ("read_file", {}),
+            ("write_files", {"files": []}), ("skill_write", {}),
+            ("side_act", {"action": "click"}), ("workflow_remove", {"name": "x"}),
+            ("workflow_run", {"name": "x"}), ("heads_up", {}),
+        ]:
+            assert not classify(ad, girdi).needs_confirmation, ad
+
+
+class TestOfficeSaveGate:
+    def test_kendi_dosyasina_kaydetme_sormuyor(self):
+        # Yolsuz kaydetme, belgenin açıldığı dosyaya gidiyor: kullanıcının
+        # ajanı yönlendirdiği dosya. Buna her seferinde sormak — ilk
+        # kayıttan sonra dosya artık var olduğu için her kayıtta sormak —
+        # ofis akışını onay yorgunluğuna çevirirdi. Riskli olan,
+        # kaydetmenin kullanıcının hiç söz etmediği BAŞKA bir dosyaya
+        # yönlendirilmesi; süzülen taraf o.
+        from backend.safety.gate import classify
+        assert not classify("office_save", {"name": "butce"}).needs_confirmation
+
+    def test_yeni_yola_kaydetme_sormuyor(self, tmp_path):
+        from backend.safety.gate import classify
+        hedef = tmp_path / "yeni.docx"
+        assert not classify(
+            "office_save", {"name": "butce", "path": str(hedef)}
+        ).needs_confirmation
+
+    def test_var_olan_dosyanin_uzerine_kaydetme_onay_ister(self, tmp_path):
+        # Başka ada kaydetme üzerine yazıyorsa `write_file`la aynı risk:
+        # var olan dosyanın içeriği gider.
+        from backend.computer import files
+        from backend.safety.gate import classify
+        hedef = tmp_path / "rapor.docx"
+        files.write(str(hedef), "eski")
+        v = classify("office_save", {"name": "butce", "path": str(hedef)})
+        assert v.needs_confirmation
+        assert "rapor.docx" in v.reason
 
 
 class TestTerminalKeys:

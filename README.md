@@ -416,9 +416,14 @@ The most useful section in any README.
   download into a shell, irreversible git operations, running as
   administrator, payment and banking windows, anything that looks like a
   card number or an API key, and every change on a remote machine ask
-  first. The classifier is deliberately narrow, not broad: an early version
-  matched `format` and asked for approval on `Format-List`, and a gate that
-  cries wolf is worse than no gate.
+  first. A click is judged by the clicked control's own label as well as
+  the window title: a "Send", "Pay" or "Delete" button inside an ordinary
+  window asks, and right and middle clicks go through the same gate. An
+  unrecognised tool name asks instead of running — the safe list is
+  explicit, so a tool added later cannot end up unguarded by default. The
+  classifier is deliberately narrow, not broad: an early version matched
+  `format` and asked for approval on `Format-List`, and a gate that cries
+  wolf is worse than no gate.
 - **Kill switch.** Esc three times inside 800 ms, on its own thread, never
   blocked by the agent loop.
 - **Credential entry is unsupported on purpose.**

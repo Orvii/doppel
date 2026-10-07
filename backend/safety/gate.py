@@ -11,6 +11,12 @@ nedeniyle dairesel; ayrıca bir API çağrısı daha demek.
 Kapsam sınırı: bu bir kum havuzu değil, bir hatırlatıcı. Kararlı bir saldırgan
 desenlerin etrafından dolaşır. Amaç, iyi niyetli bir ajanın geri alınamaz bir
 şeyi fark etmeden yapmasını engellemek.
+
+İki varsayılan bilinçli olarak sıkı: **tanınmayan araç adı** onay istiyor
+(açık liste — depoya araç ekleniyor ve sessizce kapısız kalan bir aracı fark
+etmenin yolu, bir şeyi bozmasını beklemek olurdu) ve tıklamada yalnızca
+pencere başlığına değil, **tıklanan denetimin etiketine** de bakılıyor:
+"Gönder" düğmesi sıradan bir pencerenin içinde durabiliyor.
 """
 
 from __future__ import annotations
@@ -73,8 +79,9 @@ SHELL_RULES = [
     _rule(r"\bStart-Process\b.*-Verb\s+RunAs|\brunas\b", "runs as administrator"),
 ]
 
-#: Tıklama koordinatı yerine pencere başlığına bakan kurallar. Ajan neye
-#: tıkladığını bilmez; hangi pencerede olduğunu bilir.
+#: Tıklama koordinatı yerine pencere başlığına bakan kurallar. Başlık her
+#: zaman okunuyor; tıklanan denetimin etiketi (LABEL_RULES) okunamadığında
+#: kararı tek başına o veriyor.
 WINDOW_RULES = [
     _rule(r"\bbank|\bhesab[ıi]m|ödeme|payment|checkout|iyzico|paypal|stripe",
           "a payment or banking window"),
@@ -82,6 +89,62 @@ WINDOW_RULES = [
           "a disk tool"),
     _rule(r"kayıt defteri|registry editor", "the registry editor"),
 ]
+
+#: Tıklanan denetimin etiketi. Pencere başlığı yetmiyor: "Gönder" düğmesi
+#: sıradan bir pencerenin, hatta bir tarayıcı sekmesinin içinde durabiliyor.
+#: Kalıplar dar tutuldu — kaydetme, kapatma, iptal geri alınabilir ve
+#: onları da sormak, sıradan tıklamayı sürekli onaya düşürürdü; boş yere
+#: uyaran bir kapı görmezden gelinir.
+#:
+#: Türkçe küçük harf katlaması `re.IGNORECASE` ile düzgün çalışmıyor:
+#: 'İ' ve 'ı' harfleri için köşeli parantez sınıfı şart (`[iı]`, `[öo]`).
+LABEL_RULES = [
+    _rule(r"\bg[öo]nder\b|\bsend\b|\bsubmit\b|\bpayla[sş](?:[iı]m)?\b",
+          "clicks a control that sends or shares"),
+    _rule(r"\bpay\b|\bbuy\b|\bpurchase\b|sat[iı]n\s*al\b|\böde(?:me)?\b|\bcheckout\b",
+          "clicks a control that pays or buys"),
+    _rule(r"\bs[iı]l(?:me)?\b|\bdelete\b|\bremove\b|\bkald[iı]r\b",
+          "clicks a control that deletes"),
+    _rule(r"\bpublish\b|\bpost\b|yay[iı]nla\b",
+          "clicks a control that publishes"),
+]
+
+#: Tıklama araçları. Hem pencere başlığı hem tıklanan denetimin etiketi
+#: süzülüyor. Sağ ve orta tık da burada: ikisi de bir düğmeyi ya da bağlam
+#: menüsündeki "Sil"i çalıştırabiliyor. Üçüncü tık da öyle — sol ve çift
+#: tık zaten süzülüyordu, kardeşini dışarıda bırakmak tutarsız olurdu.
+CLICK_TOOLS = frozenset({
+    "left_click", "right_click", "middle_click", "double_click", "triple_click",
+})
+
+#: Sorgusuz geçebilen araçlar. **Açık liste**: `classify` sonunda buraya
+#: bakıyor ve burada olmayan ad onay istiyor. Kuru koşudaki `SALT_OKUNUR`
+#: ile aynı gerekçe — depoya araç eklenip buraya yazılmadığında, yeni aracın
+#: sessizce kapısız kalmasını beklemek yerine bir soru soruluyor; kapıyı
+#: unutmanın bedeli bir onay, hiç fark etmemenin bedeli geri alınamaz bir
+#: eylem olurdu.
+#:
+#: Kendi içinde onay isteyen araçlar (skill_write, remote_write, write_files
+#: gibi) burada: onlar `self.approve`'u doğrudan çağırıyor ve burada
+#: CONFIRM demek çift soru olurdu.
+SAFE_TOOLS = frozenset({
+    # okuma ve durum
+    "screenshot", "zoom", "cursor_position", "read_ui_tree", "read_file",
+    "list_dir", "list_apps", "skill_list", "office_read", "office_history",
+    "terminal_read", "workflow_list", "remote_list", "remote_read",
+    "side_windows", "side_capture",
+    # fare ve zamanlama — tıklama değil
+    "mouse_move", "left_mouse_down", "left_mouse_up", "scroll", "hold_key",
+    "wait",
+    # kendi içinde onay isteyenler
+    "skill_write", "skill_remove", "button_write", "button_remove",
+    "remote_write", "remote_run", "write_files",
+    # geri alınabilir ya da kullanıcıya görünür olanlar
+    "heads_up", "launch_app", "terminal_open", "terminal_close",
+    "office_open", "office_edit", "office_close", "switch_display",
+    "record_start", "record_stop", "side_close", "side_act",
+    "workflow_save", "workflow_run", "workflow_remove", "remote_connect",
+})
 
 #: Yazılan metin bunlara benziyorsa dur — ajan kimlik bilgisi girmemeli.
 SECRET_HINTS = [
@@ -115,6 +178,20 @@ def classify_window(title: str) -> Verdict:
     return SAFE
 
 
+def classify_label(label: str) -> Verdict:
+    """Tıklanan denetimin etiketini sınıflandırır.
+
+    Etiket okunamadıysa boş gelir ve burada SAFE dönüyor: UIA'nın kapalı
+    olduğu yer (oyun, tuval, yükseltilmiş pencere) sıradan kullanımda da
+    yaygın ve oradaki her tıklamayı onaya düşürmek, kapıyı yorgunlukla
+    işlevsiz kılardı. Pencere başlığı süzgeci o yerde yine çalışıyor.
+    """
+    for pattern, reason in LABEL_RULES:
+        if pattern.search(label):
+            return Verdict(Risk.CONFIRM, reason)
+    return SAFE
+
+
 def classify_write(path: str) -> Verdict:
     """Dosya yazmayı sınıflandırır.
 
@@ -137,8 +214,14 @@ def classify_write(path: str) -> Verdict:
     return SAFE
 
 
-def classify(name: str, payload: dict, window_title: str = "") -> Verdict:
-    """Bir araç çağrısının tamamını sınıflandırır."""
+def classify(name: str, payload: dict, window_title: str = "",
+             label: str = "") -> Verdict:
+    """Bir araç çağrısının tamamını sınıflandırır.
+
+    `label` tıklanacak denetimin UIA etiketi; okuyan taraf
+    `Dispatcher._hedef_etiketi`. Okunamadıysa boş gelir ve yalnızca
+    pencere başlığı karar verir.
+    """
     if name == "run_shell":
         return classify_shell(str(payload.get("command", "")))
 
@@ -170,8 +253,26 @@ def classify(name: str, payload: dict, window_title: str = "") -> Verdict:
         if verdict.needs_confirmation:
             return verdict
 
-    if name in {"type", "key", "left_click", "double_click", "left_click_drag"}:
+    if name in CLICK_TOOLS:
+        # Pencere başlığı önce: bir banka penceresinde etiket okunamamış
+        # olsa bile başlık gerçeği söylüyor ve başlık her zaman okunuyor.
+        verdict = classify_window(window_title)
+        if verdict.needs_confirmation:
+            return verdict
+        return classify_label(label)
+
+    if name in {"type", "key", "left_click_drag"}:
         return classify_window(window_title)
+
+    if name == "office_save":
+        # Yol verilmeden kaydetme belgenin kendi dosyasına gidiyor — açılışta
+        # zaten okunan dosya; normal kaydetme, kapının işi değil. `path`
+        # başka bir dosyayı işaret ediyorsa üzerine yazma riski
+        # `write_file`la aynı: var olan dosya sorulur.
+        hedef = payload.get("path")
+        if not hedef:
+            return SAFE
+        return classify_write(str(hedef))
 
     if name == "side_launch":
         # Yan alanda açılan uygulamayı Berkay göremiyor — masaüstü görünmez.
@@ -185,7 +286,14 @@ def classify(name: str, payload: dict, window_title: str = "") -> Verdict:
         # aynı kapıdan geçiyor.
         return classify_typing(str(payload.get("text", "")))
 
-    return SAFE
+    if name in SAFE_TOOLS:
+        return SAFE
+
+    # Açık liste, kuru koşudaki `SALT_OKUNUR` ile aynı gerekçe: depoya araç
+    # eklenip buraya yazılmadığında aracın sessizce kapısız kalmasını
+    # beklemek yerine, tanınmayan ad onay istiyor. Listeye her bilinçli
+    # ekleme bir karar; unutmanın bedeli bir soru oluyor.
+    return Verdict(Risk.CONFIRM, f"runs {name!r}, which the gate does not know")
 
 
 #: Uzak makinede sorgusuz çalışabilecek komutlar.
