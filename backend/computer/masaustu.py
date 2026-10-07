@@ -45,12 +45,12 @@ import ctypes
 import os
 import threading
 from collections.abc import Sequence
-from ctypes import wintypes
 from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
 from .capture import Frame
+from .win32_kabuk import WINFUNCTYPE, WinDLL, wintypes
 
 #: Ajanın imleci — maskotun rengi. Windows'un okunu taklit etmiyoruz
 #: kasıtlı olarak: karede iki ok görünürse hangisinin kimin olduğu
@@ -63,9 +63,9 @@ IMLEC_OYUK = (28, 28, 28)
 #: düşüp kayboluyor. 28, küçültülmüş karede de okunuyor.
 IMLEC_BOY = 28
 
-_u32 = ctypes.WinDLL("user32", use_last_error=True)
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
-_g32 = ctypes.WinDLL("gdi32", use_last_error=True)
+_u32 = WinDLL("user32", use_last_error=True)
+_k32 = WinDLL("kernel32", use_last_error=True)
+_g32 = WinDLL("gdi32", use_last_error=True)
 
 GENERIC_ALL = 0x10000000
 
@@ -88,7 +88,7 @@ _u32.CreateDesktopW.argtypes = [
     wintypes.DWORD, wintypes.DWORD, ctypes.c_void_p,
 ]
 
-_EnumProc = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+_EnumProc = WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
 
 
 class MasaustuHatasi(RuntimeError):

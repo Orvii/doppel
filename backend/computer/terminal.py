@@ -23,7 +23,11 @@ import time
 from dataclasses import dataclass, field
 
 import pyte
-import winpty
+
+try:
+    import winpty
+except ImportError:  # Linux: ConPTY yok — modül içe aktarılabilir kalsın
+    winpty = None  # type: ignore[assignment]
 
 DEFAULT_COLS = 120
 DEFAULT_ROWS = 40
@@ -83,6 +87,11 @@ class TerminalSession:
         cols: int = DEFAULT_COLS,
         rows: int = DEFAULT_ROWS,
     ) -> TerminalSession:
+        if winpty is None:
+            raise TerminalError(
+                "The terminal needs Windows ConPTY (pywinpty); it is not "
+                "available on this platform."
+            )
         argv = command or "powershell.exe -NoLogo -NoProfile"
         try:
             process = winpty.PtyProcess.spawn(
