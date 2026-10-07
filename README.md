@@ -1,11 +1,12 @@
 # Doppel
 
-A Windows 11 computer-control agent that gets **its own desktop and its own
+A computer-control agent that gets **its own desktop and its own
 cursor**, so it can work while you keep using yours.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Windows 11](https://img.shields.io/badge/Windows-11-0078D4?logo=windows&logoColor=white)](#requirements)
+[![Linux](https://img.shields.io/badge/Linux-X11%20%C2%B7%20Wayland%20%C2%B7%20headless-FCC624?logo=linux&logoColor=black)](#linux)
 [![PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?logo=qt&logoColor=white)](https://doc.qt.io/qtforpython-6/)
 [![Claude Opus 5](https://img.shields.io/badge/Model-Claude%20Opus%205-D97757)](https://docs.anthropic.com/)
 [![Tests](https://img.shields.io/badge/tests-836%20passing-brightgreen)](tests/test_computer.py)
@@ -286,7 +287,7 @@ entry or a scheduled task would.
 
 ## Requirements
 
-- Windows 11 (this is a Win32 project, not a portable one)
+- Windows 11 or Linux (see [Linux](#linux) for what each session type gets)
 - Python 3.12+
 - An Anthropic API key with access to `claude-opus-5`
 
@@ -295,11 +296,29 @@ entry or a scheduled task would.
 The project stands on its own: copy the directory anywhere and it runs
 there, with no workspace manager and no external repository.
 
+Windows:
+
 ```
 py -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install -r requirements.txt -r requirements-windows.txt
 copy .env.example .env
 ```
+
+Linux:
+
+```
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt -r requirements-linux.txt
+cp .env.example .env
+```
+
+The requirements split is honest rather than cosmetic: `uiautomation` and
+`pywinpty` have no Linux wheels, so they live in `requirements-windows.txt`;
+`requirements-linux.txt` holds the one Linux-only package, `dbus-next` (the
+Wayland portal transport, imported lazily at runtime). Everything else the
+Linux port needs is a system tool — `Xvfb`, `xdotool`, `x11-utils`, `ffmpeg`,
+AT-SPI — listed in the [Linux](#linux) section. Anything Linux-only that
+arrives later goes into that file, never into the common one.
 
 Keys go into `.env`, which is in `.gitignore` and must never be committed.
 Without `ANTHROPIC_API_KEY` the app still opens, but the bar says
@@ -311,6 +330,8 @@ source and an update should not delete it. `AJAN_STATE_DIR` moves that.
 
 ## Run
 
+Windows:
+
 ```
 .venv/Scripts/pythonw.exe doppel.py                        # the app
 .venv/Scripts/python.exe -m pytest tests -q                 # 836 tests
@@ -320,6 +341,20 @@ source and an update should not delete it. `AJAN_STATE_DIR` moves that.
 .venv/Scripts/python.exe scripts/masa_dogrula.py            # the desk
 .venv/Scripts/python.exe scripts/ajan.py "open Notepad"     # no UI
 ```
+
+Linux:
+
+```
+./Doppel.sh                                                 # the app
+.venv/bin/python -m pytest tests -q                         # the suite
+```
+
+`Doppel.sh` finds the venv itself (`.venv/bin/python3`, then
+`.venv/bin/python`, then `python3` from `PATH`) and execs `doppel.py`; it
+does not need activating. Autostart writes
+`Exec="<absolute repo path>/Doppel.sh"` into `~/.config/autostart/`, which
+is why the launcher lives at the repo root and why its name is part of the
+contract.
 
 `--input` and `ajan.py` really do drive the mouse and keyboard. **Esc three
 times** stops everything, from anywhere, at any moment.
@@ -409,6 +444,68 @@ The most useful section in any README.
   an empty tree. `read_ui_tree` reports that and the model falls back to a
   screenshot.
 
+## Linux
+
+Doppel runs on any Linux. X11 is not a requirement — it is a capability, and
+the port adapts to the session it finds. What you get depends on where you
+run it:
+
+| Session | Own desk (side display) | Control of your real desktop | Accessibility |
+| --- | --- | --- | --- |
+| X11 | Yes, via Xvfb | Yes — XTEST input, `mss` capture | AT-SPI, when a session bus exists |
+| Wayland | Yes, via Xvfb or Xephyr | Input only, via the RemoteDesktop portal — you approve it in the OS dialog. Screen capture raises a clear "not implemented" | AT-SPI, when a session bus exists |
+| Headless | Yes | No | No |
+
+Supporting system packages (`apt install`):
+
+```
+xvfb xdotool x11-utils ffmpeg            # own desk, X11 input, recording
+wmctrl                                   # window management
+dbus dbus-x11                            # session bus (for AT-SPI)
+at-spi2-core python3-pyatspi             # accessibility (not pip-installable)
+libxkbcommon-x11-0 libxcb-* libxcb-xinerama0 libegl1   # Qt xcb plugin
+```
+
+The one Linux-only pip package is `dbus-next` (see
+`requirements-linux.txt`); everything else above is a system tool. It is
+imported lazily inside the portal transport, only when a Wayland session
+actually reaches that path — never at import or collection time.
+
+Wayland is redirected through the desktop portals rather than driven
+directly, because there is no portable Wayland protocol for a client to
+read another application's window contents or inject input — the compositor
+owns that, and the portal is the only sanctioned door. **Input through the
+portal is implemented and mock-tested; screen capture on Wayland is not
+implemented in this build** — the session handshake is there, but turning
+PipeWire frames into an image was deliberately left out, so the capture call
+raises a documented unavailability instead of returning something wrong.
+That error is a distinct type whose message states what *did* succeed (the
+prepared session, the stream count, the received fd), so it cannot be
+mistaken for a permission refusal; the monitor/device list raises the same
+way, because it is not available outside a consented session either. Use the
+X11 session (or the side display) when you need capture. The portal input
+path has not been run against a real Wayland desktop, so treat it as
+unverified until someone does; the honest gap is that CI has no compositor
+and no `xdg-desktop-portal`.
+
+What is honestly unavailable:
+
+- **Screen capture on a real Wayland desktop.** Implemented handshake,
+  deliberately unimplemented frame conversion; it says so rather than
+  pretending.
+- **Capturing your real desktop's other windows the way Windows' PrintWindow
+  does.** X11 has no portable equivalent for an app to snapshot another
+  app's window without the compositor's cooperation. Use the side display
+  instead — that is what it is for.
+- **Interactive window manager behaviour.** Focus, stacking and EWMH are
+  exercised under Xvfb without a window manager, so a real WM can still
+  surprise you. CI is deliberately not hiding this.
+- **GPU rendering.** Qt falls back to software drawing.
+
+The port's rule is the same one the Windows side follows: a capability that
+is absent says so, and approval errs toward asking. Nothing pretends to work
+and then quietly does nothing.
+
 ## Safety
 
 - **Approval gate.** Every batch is classified before it runs. Deleting,
@@ -452,8 +549,14 @@ app/mcp_view.py the MCP page: servers, their tools, their warnings
 app/gecmis.py   the history page; app/akislar.py the workflows page
 app/tepsi.py    tray icon; app/kisayol.py the global shortcut
 app/baslangic.py  the Start with Windows registry value
+.                   Doppel.bat (Windows) and Doppel.sh (Linux) launchers
+requirements.txt    common pip packages
+requirements-windows.txt  uiautomation, pywinpty — no Linux wheels
+requirements-linux.txt    Linux-only pip packages: dbus-next (portal transport)
 scripts/        manual verification, asset and hero generation
+  secret-patterns.sh  the secret patterns, single source for hook and CI
 tests/          836 tests of the pure logic
+.github/workflows/ci.yml  Windows full suite + Linux Xvfb/dbus suite
 ```
 
 ## Contributing
