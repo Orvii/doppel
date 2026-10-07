@@ -287,7 +287,7 @@ bir güncelleme onları silmemeli. `AJAN_STATE_DIR` ile taşınabiliyor.
 
 ```
 .venv/Scripts/pythonw.exe doppel.py                          # uygulama
-.venv/Scripts/python.exe -m pytest tests -q                # saf mantık, 654 test
+.venv/Scripts/python.exe -m pytest tests -q                # saf mantık, 836 test
 .venv/Scripts/python.exe scripts/check_phase1.py           # yakalama, ekrana dokunmaz
 .venv/Scripts/python.exe scripts/check_phase1.py --input   # Notepad'e Türkçe yazar
 .venv/Scripts/python.exe scripts/masa_dogrula.py           # ajanın masası
