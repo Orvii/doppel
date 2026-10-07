@@ -81,13 +81,13 @@ GOZ_EN, GOZ_BOY = 12.20, 10.67
 #: Tepsi ipucunda görünen durum adları. Pencere içindekiyle aynı olmak
 #: zorunda değil: orada "Ready" bir başlık, burada bir cümle sonu.
 IPUCU = {
-    "bos": "Yan Masa — idle",
-    "dinleniyor": "Yan Masa — listening",
-    "diziliyor": "Yan Masa — transcribing",
-    "kosuyor": "Yan Masa — working",
-    "onay": "Yan Masa — waiting for your approval",
-    "bitti": "Yan Masa — done",
-    "durduruldu": "Yan Masa — stopped",
+    "bos": "Doppel — idle",
+    "dinleniyor": "Doppel — listening",
+    "diziliyor": "Doppel — transcribing",
+    "kosuyor": "Doppel — working",
+    "onay": "Doppel — waiting for your approval",
+    "bitti": "Doppel — done",
+    "durduruldu": "Doppel — stopped",
 }
 
 
@@ -199,7 +199,7 @@ class Tepsi(QObject):
         menu.addSeparator()
         self._baslangic = menu.addAction("Start with Windows")
         self._baslangic.setCheckable(True)
-        self._baslangic.setToolTip("Runs Yan Masa when you sign in")
+        self._baslangic.setToolTip("Runs Doppel when you sign in")
         self._baslangic.toggled.connect(self._baslangic_degisti)
         # Kutu menü her açıldığında gerçeğe göre tazeleniyor: kayıt
         # defterini başka bir şey değiştirmiş olabilir ve bayat bir
@@ -210,7 +210,7 @@ class Tepsi(QObject):
         self._durdur.setToolTip("Esc ×3 does the same from anywhere")
         self._durdur.triggered.connect(self.durdur_istendi.emit)
         menu.addSeparator()
-        cik = menu.addAction("Quit Yan Masa")
+        cik = menu.addAction("Quit Doppel")
         cik.triggered.connect(self.cikis_istendi.emit)
         # Menü Python tarafında canlı kalmalı: yerel bir değişken olarak
         # bırakılınca çöp toplayıcı alıyor ve tepsiye sağ tıklamak hiçbir
@@ -235,7 +235,7 @@ class Tepsi(QObject):
             return
         self._faz = faz
         self.icon.setIcon(simge(self.t, faz))
-        self.icon.setToolTip(IPUCU.get(faz, "Yan Masa"))
+        self.icon.setToolTip(IPUCU.get(faz, "Doppel"))
 
     def bildir(self, baslik: str, metin: str, hata: bool = False) -> None:
         """Balon bildirim. Metin kırpılıyor — Windows uzununu kendi kesiyor

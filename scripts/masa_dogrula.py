@@ -34,7 +34,7 @@ SAYFA = (
     "<html><head><meta charset='utf-8'></head>"
     "<body style='margin:0;background:#f4f4f4;font:16px system-ui'>"
     "<div style='background:#2b6b3f;color:#fff;padding:14px 18px;"
-    "font-size:20px'>yan masa</div>"
+    "font-size:20px'>Doppel</div>"
     "<div style='padding:18px'>Bu sayfa ajanın kendi masaüstünde açık. "
     "Berkay'ın ekranında görünmüyor, faresi ve odağı yerinde.</div>"
     "</body></html>"

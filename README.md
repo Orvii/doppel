@@ -1,4 +1,4 @@
-# Yan Masa
+# Doppel
 
 A Windows 11 computer-control agent that gets **its own desktop and its own
 cursor**, so it can work while you keep using yours.
@@ -10,7 +10,7 @@ cursor**, so it can work while you keep using yours.
 [![Claude Opus 5](https://img.shields.io/badge/Model-Claude%20Opus%205-D97757)](https://docs.anthropic.com/)
 [![Tests](https://img.shields.io/badge/tests-654%20passing-brightgreen)](tests/test_computer.py)
 
-![Yan Masa running a job: the instruction, every step with its real result, the sheet the agent produced, and the floating command bar](varliklar/onizleme/hero.png)
+![Doppel running a job: the instruction, every step with its real result, the sheet the agent produced, and the floating command bar](varliklar/onizleme/hero.png)
 
 *Türkçe: [README.tr.md](README.tr.md) — the long-form document, with the
 measurements behind every decision.*
@@ -312,7 +312,7 @@ source and an update should not delete it. `AJAN_STATE_DIR` moves that.
 ## Run
 
 ```
-.venv/Scripts/pythonw.exe yanmasa.py                        # the app
+.venv/Scripts/pythonw.exe doppel.py                        # the app
 .venv/Scripts/python.exe -m pytest tests -q                 # 654 tests
 .venv/Scripts/python.exe scripts/check_phase1.py            # capture only
 .venv/Scripts/python.exe scripts/check_phase1.py --input    # really types

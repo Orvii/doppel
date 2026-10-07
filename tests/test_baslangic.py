@@ -7,7 +7,7 @@ değiştirmesi demek olurdu.
 
 Ağırlık üç yerde: komutun **tırnaklanması** (kullanıcı adında boşluk
 varsa tırnaksız komut sessizce hiçbir şey başlatmıyor), yazılan yolun
-gerçekten `pythonw.exe` + `yanmasa.py` olması, ve aç/kapat döngüsünün
+gerçekten `pythonw.exe` + `doppel.py` olması, ve aç/kapat döngüsünün
 `acik()` ile tutarlı kalması.
 """
 
@@ -108,11 +108,11 @@ class TestKomut:
         parcalar = shlex.split(k, posix=False)
         assert len(parcalar) == 2
 
-    def test_pythonw_ve_yanmasa_yollari(self):
+    def test_pythonw_ve_doppel_yollari(self):
         k = baslangic.komut()
         assert "pythonw.exe" in k.lower()
-        betik = Path(__file__).resolve().parent.parent / "yanmasa.py"
-        assert betik.exists(), "yanmasa.py deponun kökünde değil"
+        betik = Path(__file__).resolve().parent.parent / "doppel.py"
+        assert betik.exists(), "doppel.py deponun kökünde değil"
         assert str(betik) in k
 
     def test_yollar_mutlak(self):
@@ -147,7 +147,7 @@ class TestAcKapat:
         assert list(kayit.kovan) == [
             r"Software\Microsoft\Windows\CurrentVersion\Run"
         ]
-        assert list(kayit.kovan[baslangic.ANAHTAR]) == ["Yan Masa"]
+        assert list(kayit.kovan[baslangic.ANAHTAR]) == [baslangic.DEGER]
 
     def test_iki_kez_acmak_tek_deger_birakiyor(self, kayit):
         baslangic.ac()
@@ -176,7 +176,7 @@ class TestBayatKayit:
         # Depo taşındıysa satır duruyor ama hiçbir şey başlatmıyor;
         # işaretli bir kutu göstermek yalan olurdu.
         kayit.kovan[baslangic.ANAHTAR] = {
-            baslangic.DEGER: r'"C:\eski\pythonw.exe" "D:\eski\yanmasa.py"'
+            baslangic.DEGER: r'"C:\eski\pythonw.exe" "D:\eski\doppel.py"'
         }
         assert not baslangic.acik()
 
@@ -209,3 +209,28 @@ class TestBayatKayit:
         baslangic.ac()
         baslangic.kapat()
         assert kayit.kovan[baslangic.ANAHTAR] == {"BaskaUygulama": "x.exe"}
+
+    def test_eski_adli_deger_acik_saymiyor(self, kayit):
+        # Ürünün eski adıyla yazılmış satır hâlâ `yanmasa.py`'yi gösteriyor
+        # ve o dosya artık yok; işaretli bir kutu yalan olurdu.
+        kayit.kovan[baslangic.ANAHTAR] = {
+            baslangic.ESKI_DEGER: r'"C:\eski\pythonw.exe" "C:\eski\yanmasa.py"'
+        }
+        assert not baslangic.acik()
+
+    def test_eski_adli_deger_acarken_siliniyor(self, kayit):
+        # Bırakılsaydı her oturum açılışında var olmayan bir betiği
+        # başlatmayı denerdi.
+        kayit.kovan[baslangic.ANAHTAR] = {baslangic.ESKI_DEGER: "eski"}
+        baslangic.ac()
+        assert baslangic.ESKI_DEGER not in kayit.kovan[baslangic.ANAHTAR]
+        assert _yazilan(kayit) == baslangic.komut()
+
+    def test_eski_adli_deger_kapatirken_siliniyor(self, kayit):
+        kayit.kovan[baslangic.ANAHTAR] = {baslangic.ESKI_DEGER: "eski"}
+        baslangic.kapat()
+        assert baslangic.ESKI_DEGER not in kayit.kovan[baslangic.ANAHTAR]
+
+    def test_eski_deger_yokken_eskiyi_silmek_patlamiyor(self, kayit):
+        baslangic.ac()
+        assert baslangic.acik()

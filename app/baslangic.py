@@ -12,7 +12,7 @@ Yazılan tek bir değer var; uygulamanın kayıt defterinde başka izi yok.
 
 ## Komut satırı tırnaklanıyor
 
-Yazılan şey `"...\\pythonw.exe" "...\\yanmasa.py"`. Tırnak süs değil:
+Yazılan şey `"...\\pythonw.exe" "...\\doppel.py"`. Tırnak süs değil:
 kullanıcı adında boşluk olabiliyor (`C:\\Users\\Ada Lovelace\\...`) ve
 tırnaksız bir komutu Windows ilk boşluktan bölüp `C:\\Users\\Ada.exe`
 aramaya çıkıyor. Sessizce başlamayan bir uygulamanın sebebi de görünmüyor.
@@ -23,10 +23,18 @@ açılıp kalması, açılışta başlamanın bütün anlamını götürürdü.
 ## "Açık" ne demek
 
 `acik()` yalnızca değerin var olmasına bakmıyor, komutun **bu** kurulumun
-`yanmasa.py`'sini gösterdiğine bakıyor. Depo taşındıysa kayıt defterindeki
+`doppel.py`'sini gösterdiğine bakıyor. Depo taşındıysa kayıt defterindeki
 satır hâlâ duruyor ama hiçbir şey başlatmıyor; orada işaretli bir kutu
 göstermek yalan olurdu. İşaretsiz görünüyor, işaretlenince doğru yol
 üzerine yazılıyor.
+
+## Ürünün adı değişti
+
+Ürün 2026-10-07'de Yan Masa'dan Doppel'e geçti; kayıt defterindeki değerin
+adı da `Doppel` oldu. Eski adla yazılmış satır `acik()` tarafından zaten
+açık sayılmıyor (gösterdiği `yanmasa.py` artık yok), ama sağlam durmasının
+sebebi bu değil: `ac()` ve `kapat()` onu da siliyor. Bırakılsaydı her
+oturum açılışında var olmayan bir betik başlatılmaya çalışılırdı.
 
 Tek bağımlılık `winreg` — standart kütüphanede ve yalnızca Windows'ta var,
 uygulamanın geri kalanı gibi.
@@ -43,8 +51,14 @@ from pathlib import Path
 ANAHTAR = r"Software\Microsoft\Windows\CurrentVersion\Run"
 
 #: Değerin adı. Kayıt defterini elle açan biri bunu görüp ne olduğunu
-#: anlayabilmeli; `yanmasa` değil, uygulamanın adı.
-DEGER = "Yan Masa"
+#: anlayabilmeli; `doppel` değil, uygulamanın adı.
+DEGER = "Doppel"
+
+#: Ürünün eski adıyla yazılmış değer. Ad değişince siliniyor: bırakılsaydı
+#: artık var olmayan `yanmasa.py`'yi her oturum açılışında başlatmayı
+#: denerdi. `acik()` bunu **açık saymaz** — gösterdiği betik yok, yani
+#: hiçbir şey başlatmıyor; işaretsiz görünmesi doğru.
+ESKI_DEGER = "Yan Masa"
 
 
 def _pythonw() -> Path:
@@ -61,8 +75,8 @@ def _pythonw() -> Path:
 
 
 def _betik() -> Path:
-    """`yanmasa.py`'nin mutlak yolu — bu modülün bir üst klasöründe."""
-    return Path(__file__).resolve().parent.parent / "yanmasa.py"
+    """`doppel.py`'nin mutlak yolu — bu modülün bir üst klasöründe."""
+    return Path(__file__).resolve().parent.parent / "doppel.py"
 
 
 def komut() -> str:
@@ -101,6 +115,18 @@ def acik() -> bool:
     return bool(yazili) and str(_betik()).casefold() in yazili.casefold()
 
 
+def _sil(anahtar, ad: str) -> None:
+    """Bir değeri siler; yoksa sessizce çıkıyor. İstenen sonuç zaten o.
+
+    İki ad ayrı ayrı siliniyor ki biri yokken diğeri atlanmasın: eski adlı
+    satır, yeni ad hiç yazılmamış olsa da temizlenmeli.
+    """
+    try:
+        winreg.DeleteValue(anahtar, ad)
+    except OSError:
+        pass
+
+
 def ac() -> None:
     """Değeri yazar. Zaten varsa üzerine yazılıyor — eski yol bayatsa
     düzeltmenin yolu bu."""
@@ -108,6 +134,7 @@ def ac() -> None:
                                  winreg.KEY_SET_VALUE)
     try:
         winreg.SetValueEx(anahtar, DEGER, 0, winreg.REG_SZ, komut())
+        _sil(anahtar, ESKI_DEGER)
     finally:
         winreg.CloseKey(anahtar)
 
@@ -120,8 +147,7 @@ def kapat() -> None:
     except OSError:
         return
     try:
-        winreg.DeleteValue(anahtar, DEGER)
-    except OSError:
-        pass
+        _sil(anahtar, DEGER)
+        _sil(anahtar, ESKI_DEGER)
     finally:
         winreg.CloseKey(anahtar)

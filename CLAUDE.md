@@ -1,4 +1,4 @@
-# Yan Masa — çalışma kuralları
+# Doppel — çalışma kuralları
 
 Bu depoda çalışan her ajan bunu okur. Kurallar tercih değil; her biri bir
 kez bozulduğu için yazıldı.
