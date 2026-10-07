@@ -66,6 +66,14 @@ class ToolOutcome:
 
     content: str | list[dict[str, Any]]
     is_error: bool = False
+    #: Eylem **sonrası** doğrulamanın sonucu: `dogrulandi` / `varsayildi` /
+    #: `dogrulanamadi`, ya da doğrulanmayan araçta `None`.
+    #:
+    #: Buraya `Dispatcher` yazmıyor — işleyiciler sonuçlarını ancak "çağrı
+    #: patlamadı" düzeyinde biliyor; tutan bir tıklamayla tutmayanı ayıran
+    #: şey makinenin durumu ve onu okuyup yazan taraf döngü (`loop.py`).
+    #: Sayısal iş doğrulamada değil, doğru tarafta: burası yalnızca kayıt.
+    dogrulama: str | None = None
 
 
 def _image_block(data: bytes, media_type: str) -> list[dict[str, Any]]:

@@ -4,6 +4,19 @@ SDK'nın `tool_runner`'ı yerine elle döngü var, çünkü üç şeye ihtiyacı
 ve runner üçünü de vermiyor: bir partideki eylemlerin ilk hatada durması,
 her adımda acil durdurma kontrolü, ve eski ekran görüntülerinin bağlamdan
 budanması.
+
+## Eylemden sonra doğrulama
+
+Bir tıklamanın ya da yazının başarılı olup olmadığını `ToolOutcome`'un
+kendisi bilmiyor: işleyiciler koşulsuz "OK" dönüyor. Modelin "tıkladım"
+sözüne güvenmek bileşik hata üretiyor — tutmayan tıklamanın ardından gelen
+yazı yanlış pencereye gidiyor. Bu yüzden döngü her eylemin **öncesinde ve
+sonrasında** ön plan penceresini ve odak denetimini okuyup karşılaştırıyor
+(`_durum_izi`) ve sonucu adım kaydına işliyor. Uydurma yok: `dogrulandi`
+yalnızca gerçekten gözlenen bir değişiklikte; gözlem değişiklik
+göstermediğinde `varsayildi`, okuma düştüğünde `dogrulanamadi` yazılıyor. Doğrulama bir emniyet kilidi değil — tutmayan
+eylem turu durdurmuyor, sonuç "Not verified" notuyla ajana dönüyor ki bir
+sonraki adımda ekran görüntüsü alıp baksın.
 """
 
 from __future__ import annotations
@@ -16,6 +29,8 @@ from typing import Any
 import anthropic
 
 from .. import config
+from ..computer import uia
+from ..computer import windows as win
 from ..computer.capture import ScreenCapture
 from ..computer.displays import DisplayMap
 from ..safety.killswitch import Aborted, KillSwitch
@@ -51,6 +66,138 @@ def _ozet(icerik) -> str:
     return str(icerik)
 
 
+#: Dünyayı doğrudan değiştiren ve doğrulaması anlamlı olan eylemler.
+#: Bakma araçları (`screenshot`, `read_ui_tree`…) değişiklik beklemedikleri
+#: için listede değil; şerh yiyen bir `screenshot` yanlış alarm olurdu.
+EYLEM_ARACLARI = frozenset({
+    "left_click", "right_click", "middle_click", "double_click",
+    "triple_click", "mouse_move", "left_click_drag", "left_mouse_down",
+    "left_mouse_up", "scroll", "type", "key", "hold_key",
+})
+
+
+def _durum_izi() -> dict[str, Any] | None:
+    """Eylem öncesi/sonrası karşılaştırılan durum özeti. Okunamazsa `None`.
+
+    Kullanılan her şey mevcut primitifler: ön plan penceresinin başlığı ve
+    süreci (`windows.py`) ile odaktaki denetim (`uia.py`). Yeni bir alt
+    sistem yok; iki ucuz okuma, eylem başına bir kez.
+
+    Hata fırlatmıyor ama yutmayı da gizlemiyor: tamamı okunamadıysa `None`
+    dönüyor ve `dogrulandi` **üretilmiyor** — okunamayan bir dünya
+    doğrulanmış sayılamaz. Kısmi kayıp (`odak=None`) `tamam` alanıyla
+    anlatılıyor; karar mercii `_dogrulama_sonucu`: okunabilen bileşenlerin
+    gerçek farkı kanıttır, okunamayan bir bileşen ne kanıt ne de "değişmedi".
+    """
+    try:
+        baslik = win.foreground_title()
+        surec = win.foreground_process()
+        odak = uia.odak_ozeti()
+        return {
+            "baslik": baslik,
+            "surec": surec,
+            "odak": odak,
+            "tamam": bool(baslik or surec) and odak is not None,
+        }
+    except Exception:
+        return None
+
+
+def _dogrulama_sonucu(
+    once: dict[str, Any] | None, sonra: dict[str, Any] | None
+) -> tuple[str, str]:
+    """`(durum, ayrinti)` — durum: dogrulandi / varsayildi / dogrulanamadi.
+
+    Üç yol var ve ayrım pazarlık dışı:
+
+    - **dogrulandi** yalnızca okunabilen bir bileşen gerçekten değiştiğinde.
+      Okunamayan bir bileşen (`None`) "değişmedi" sayılmıyor — okunamamış
+      bir dünya kanıt üretemez; kısmi okumadaki gerçek bir fark ise kanıttır
+      ve başlık/süreç uyuşmazlığı odak okunamasa bile sayılır.
+    - **varsayildi** okunabilen kısımda fark yoksa: varsayım bu.
+    - **dogrulanamadi** hiçbir şey okunamadıysa.
+
+    Uydurulmuş bir "dogrulandi" zincirleme hatayı gizler; şerhli bir
+    "varsayildi" yalnızca dikkat çeker. Yanlış tarafa düşmesi gereken yer
+    burası.
+    """
+    if once is None or sonra is None:
+        return "dogrulanamadi", "the screen state could not be read around the action"
+    if _bos(once) or _bos(sonra):
+        # Hiçbir şey okunamadı — masaüstünün kendisi odakta olabilir.
+        # "Kısmen okundu" demek burada yalan olurdu.
+        return "dogrulanamadi", (
+            "nothing about the screen could be read around the action"
+        )
+
+    fark = _fark_anlat(once, sonra)
+    if fark:
+        return "dogrulandi", f"the screen changed after the action — {fark}"
+    if once.get("tamam") and sonra.get("tamam"):
+        return "varsayildi", "no visible change after the action"
+    return "varsayildi", (
+        "the screen could only be read in part, and no change showed in "
+        "the readable part"
+    )
+
+
+def _bos(iz: dict[str, Any]) -> bool:
+    """İzdeki her alan boş mu — hiçbir şey okunamamış mı."""
+    return not (iz.get("baslik") or iz.get("surec") or iz.get("odak"))
+
+
+def _fark_anlat(once: dict[str, Any], sonra: dict[str, Any]) -> str:
+    """Okunabilen bileşenlerdeki gerçek farkların kısa anlatımı.
+
+    Odak iki tarafta da okunabildiyse karşılaştırılıyor; bir tarafı
+    okunamayan bir karşılaştırma fark sayılmaz, çünkü taraf tutar:
+    `None -> ("Edit", ...)` bir değişiklik değil, bir okuma hatasıdır.
+    """
+    parcalar: list[str] = []
+    if once.get("baslik") != sonra.get("baslik"):
+        parcalar.append(
+            f"window {once.get('baslik')!r} -> {sonra.get('baslik')!r}"
+        )
+    if once.get("surec") != sonra.get("surec"):
+        parcalar.append(
+            f"process {once.get('surec')!r} -> {sonra.get('surec')!r}"
+        )
+    o, s = once.get("odak"), sonra.get("odak")
+    if o is not None and s is not None and o != s:
+        parcalar.append(f"focus {_odak_anlat(o)} -> {_odak_anlat(s)}")
+    return "; ".join(parcalar)
+
+
+def _odak_anlat(odak: tuple[str, str, str] | None) -> str:
+    if odak is None:
+        return "(focus unreadable)"
+    tur, ad, deger = odak
+    if deger:
+        return f"{tur} {ad!r} = {deger!r}"
+    return f"{tur} {ad!r}"
+
+
+def _dogrulama_notu(durum: str, ayrinti: str) -> str:
+    """Sonuca eklenen İngilizce not.
+
+    İngilizce, çünkü not modele gidiyor ve sızması serbest. Ayrım pazarlık
+    dışı: gerçekleşen değişiklik gözlenen kanıttır ve ajana "bu adım oldu,
+    üstüne kur" yetkisi verir; gerçekleşmeyen ise varsayımdır ve bir
+    sonraki adımı onun üstüne kurmaması açıkça söylenir. Uydurulmuş bir
+    doğrulama, zincirleme hatayı **gizler**; şerhli bir varsayım yalnızca
+    dikkat çeker.
+    """
+    if durum == "dogrulandi":
+        return (
+            f"\n\n[Verified: {ayrinti}. This is an observed change, not a "
+            f"claim — carry on.]"
+        )
+    return (
+        f"\n\n[Not verified: {ayrinti}. Do not assume this worked; take a "
+        f"screenshot or read the UI tree before the next step.]"
+    )
+
+
 @dataclass
 class Turn:
     """Bir tur boyunca dışarıya bildirilenler — arayüz buraya bağlanacak."""
@@ -73,6 +220,11 @@ class Turn:
     #: Dosya diske hâlâ tek seferde yazılıyor; canlı olan modelin
     #: üretimi ve gösterilen de tam olarak o.
     on_kod: Callable[[str, str, str, bool], None] = lambda _a, _y, _m, _b: None
+    #: Bir eylemden sonra doğrulama: (araç, durum). Durum `dogrulandi`,
+    #: `varsayildi` ya da `dogrulanamadi`. Adım kaydı zaten `ToolOutcome`
+    #: üzerinde duruyor (`dogrulama` alanı); bu kanca onu turun dışına,
+    #: arayüze ve denetim kaydının sahibine taşıyan kanal.
+    on_dogrulama: Callable[[str, str], None] = lambda _n, _d: None
 
 
 #: Reddedilme mesajı. Computer-use çağrılarında Anthropic bir güvenlik
@@ -463,6 +615,12 @@ class Agent:
         al"). Bunlar birbirini varsayar: tıklama başarısızsa yazma yanlış
         yere gider. Bu yüzden ilk hatadan sonrakiler çalıştırılmıyor,
         modele de neden çalıştırılmadığı söyleniyor.
+
+        Eylem araçlarından sonra makinenin durumu **yeniden okunuyor**
+        (`_dogrula`): işleyici "OK" derken bir tıklamanın tutup tutmadığını
+        bilmiyor. Doğrulama bir hata yolu değil — tutmayan eylem turu
+        durdurmuyor, yalnızca işaretleniyor; kural tek: söylenen şey görülen
+        şey olsun.
         """
         results: list[dict[str, Any]] = []
         failed = False
@@ -486,6 +644,20 @@ class Agent:
                 continue
 
             turn.on_action(block.name, payload)
+            # Doğrulama izi eylemden **önce** okunuyor ve yalnızca eylem
+            # araçlarında: bir `screenshot`ın doğrulanacak bir iddiası yok,
+            # ona fazladan iki okuma binmemeli. "Doğrulanacak mı" kararı
+            # araç adından; `once`un `None` olması okumanın düştüğü anlamına
+            # gelir ve o durumda da doğrulanır — `dogrulanamadi` damgasıyla.
+            #
+            # Kuru koşuda doğrulama yok: eylem hiç çalışmadı, yani
+            # doğrulanacak bir iddia da yok. Şerh eklenirse kuru koşunun
+            # kendi talimatıyla ("Assume it would have worked and carry on
+            # planning") açıkça çelişirdi.
+            dogrula = (
+                block.name in EYLEM_ARACLARI and not self.dispatcher.kuru
+            )
+            once = _durum_izi() if dogrula else None
             try:
                 outcome = self.dispatcher.run(block.name, payload)
             except Aborted:
@@ -498,6 +670,9 @@ class Agent:
                     content=f"{type(exc).__name__}: {exc}", is_error=True
                 )
                 failed = True
+            else:
+                if dogrula:
+                    self._dogrula(block.name, outcome, once, turn)
 
             if outcome.is_error and seen_errors is not None:
                 key = _error_key(block.name, outcome)
@@ -511,6 +686,8 @@ class Agent:
                             f"what is not working.]"
                         ),
                         is_error=True,
+                        # Şerh, doğrulama damgasını silmemeli.
+                        dogrulama=outcome.dogrulama,
                     )
 
             self.kayit.eylem(
@@ -521,6 +698,24 @@ class Agent:
             results.append(self._result_block(block, outcome))
 
         return results
+
+    def _dogrula(self, name: str, outcome: ToolOutcome, once, turn: Turn) -> None:
+        """Eylemden sonra durumu yeniden okur ve adımı damgalar.
+
+        Yalnızca başarılı araçlarda çağrılıyor: hata zaten modele dönüyor.
+        Damga `ToolOutcome`u **yerinde** değiştiriyor — `turn.on_result` de
+        aynı nesneyi gördüğü için arayüz ve kayıt aynı şeyi okumak zorunda
+        kalıyor, ikinci bir kopya yok.
+
+        Şerh `content`e buradan, `_result_block` çalışmadan önce ekleniyor:
+        modelin gördüğü metin tek yol üzerinden geçsin ve şerh ne kayıtta ne
+        sonuç bloğunda ikinci kez çoğalmasın.
+        """
+        sonra = _durum_izi()
+        durum, ayrinti = _dogrulama_sonucu(once, sonra)
+        outcome.dogrulama = durum
+        outcome.content = str(outcome.content) + _dogrulama_notu(durum, ayrinti)
+        turn.on_dogrulama(name, durum)
 
     def _result_block(self, block, outcome: ToolOutcome) -> dict[str, Any]:
         result: dict[str, Any] = {

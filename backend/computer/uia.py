@@ -145,3 +145,35 @@ def _value_of(control) -> str:
     except Exception:
         pass
     return ""
+
+
+#: Odak özetindeki alanların sınırı. Her eylemden önce ve sonra okunuyor;
+#: büyük bir belgenin tamamını iki kez okumak adım başına sınırsız maliyet
+#: olurdu. 200 karakter yazılanı görmeye yetiyor; ötesindeki bir değişiklik
+#: görülmezse sonuç "dogrulanamadi" değil "değişmedi" olur — modeli
+#: ekran görüntüsü almaya iten uyarı yine çıkıyor.
+ODAK_SINIRI = 200
+
+
+def odak_ozeti() -> tuple[str, str, str] | None:
+    """Odaktaki denetimin (tür, ad, değer) özeti — okunamazsa `None`.
+
+    Kimin için: ajan döngüsü bir eylemden **önce ve sonra** bunu iki kez
+    okuyup karşılaştırıyor. Tıklama sonrası pencere başlığı değişmese de
+    odak başka denetime geçer; `type` sonrası ise odak aynı kalıp
+    `EditControl`'ün değeri değişir — "yazdım" iddiasının tek ucuz kanıtı
+    orası. Bu yüzden değer de özete giriyor.
+
+    Okunamaması olağan: yükseltilmiş pencereler erişim reddi veriyor ve
+    COM çağrısı her an düşebiliyor. `None` "değişiklik yok" demek değil,
+    "bu bileşen karşılaştırılamadı" demek — ayrımı çağıran koruyor.
+    """
+    try:
+        control = auto.GetFocusedControl()
+        if control is None:
+            return None
+        tur = control.ControlTypeName.removesuffix("Control")[:40]
+        ad = str(control.Name or "")[:80]
+        return (tur, ad, _value_of(control)[:ODAK_SINIRI])
+    except Exception:
+        return None
