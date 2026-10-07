@@ -1,12 +1,22 @@
 """Ekran yakalama — monitör başına PNG.
 
 Modele giden her kare tek bir monitör. Bu bir performans tercihi değil,
-koordinat doğruluğu tercihi: 1920x1080 modelin 2576 px sınırının altında
-kaldığı için kare hiç küçültülmüyor ve modelin verdiği piksel doğrudan
-tıklanabilir bir piksel oluyor.
+koordinat doğruluğu tercihi: monitör başına kare bu makinede 1920x1080,
+hem kenar sınırının (2576 px) hem token bütçesinin (4784) altında, yani
+kare hiç küçültülmüyor ve modelin verdiği piksel doğrudan tıklanabilir bir
+piksel oluyor.
+
+`model_gorsel` bu kararın uygulandığı yerdir: kare modele gönderilmeden
+önce sınırlara sığdırılır. Eskiden yalnızca kenara bakılırdı ve 2560x1600
+gibi kenar sınırının altında ama token bütçesinin üstünde bir kare
+küçültülmeden gönderilirdi; API onu ya sessizce küçültür (koordinatlar
+kayar) ya da isteği reddederdi. Computer araç setine dönen karelerde
+tercih edilen ikincisi, yani bu düzeltilmeden o ekranda ajan hiç
+çalışamazdı.
 
 `zoom` aksiyonu aynı kaynaktan bölge kırpıyor — yeniden yakalama değil, çünkü
 model kırpmayı istediğinde baktığı kare o an ekranda olan kare olmayabilir.
+Kırpma da model uzayında: bölge, modelin gördüğü kareden seçiliyor.
 """
 
 from __future__ import annotations
@@ -18,19 +28,48 @@ from dataclasses import dataclass
 import mss
 from PIL import Image
 
-from .displays import Display, DisplayMap
+from .displays import Display, DisplayMap, model_kare_boyutu
 
 
 @dataclass(frozen=True)
 class Frame:
-    """Yakalanmış bir kare ve hangi monitöre ait olduğu."""
+    """Yakalanmış bir kare ve hangi monitöre ait olduğu.
+
+    `width`/`height` **model uzayı** — karenin modele gittiği hâli. Fiziksel
+    yakalama boyutu küçültme gerektiriyorsa `model_gorsel` farkı kapatır ve
+    `model_kare_boyutu(width, height) == (width, height)` değişmezi korunur.
+    """
 
     display_index: int
     width: int
     height: int
     image: Image.Image
 
+    @classmethod
+    def from_capture(
+        cls, display_index: int, image: Image.Image
+    ) -> Frame:
+        """Fiziksel bir görüntüden kare kurar; küçültmeyi burada uygular."""
+        en, boy = model_kare_boyutu(image.width, image.height)
+        return cls(
+            display_index=display_index, width=en, height=boy, image=image
+        )
+
+    def model_gorsel(self) -> Image.Image:
+        """Modele gönderilecek görüntü — sınırlara sığdırılmış hâli.
+
+        Sığıyorsa görüntünün kendisi döner (kopya yok, yeniden örnekleme
+        yok); sığmıyorsa modelin uygulayacağı boyuta indirgenir. Hangi
+        yoldan geçtiği ölçek matematiğini etkilemez; ölçek zaten karenin
+        `width`/`height` değerlerinde yaşıyor.
+        """
+        if self.image.width == self.width and self.image.height == self.height:
+            return self.image
+        return self.image.resize((self.width, self.height), Image.Resampling.LANCZOS)
+
     def to_png(self, optimize: bool = False) -> bytes:
+        """Arayüz için PNG. Fiziksel çözünürlük korunur — bu kare modele
+        gitmiyor, Berkay bakıyor ve küçültülmüş önizleme okunmaz olurdu."""
         buffer = io.BytesIO()
         # optimize=True kareyi ~%15 küçültüyor ama 1080p'de ~120 ms sürüyor;
         # ajan döngüsünde bu her adıma binen bir gecikme, varsayılan kapalı.
@@ -60,17 +99,27 @@ class Frame:
         binen 700 ms'e değmiyor.
         """
         buffer = io.BytesIO()
-        self.image.save(buffer, format="WEBP", lossless=True, method=0)
+        self.model_gorsel().save(buffer, format="WEBP", lossless=True, method=0)
         return buffer.getvalue(), "image/webp"
 
     def crop(self, region: tuple[int, int, int, int]) -> Image.Image:
-        """`zoom` için bölge kırpar. region = (x0, y0, x1, y1)."""
+        """`zoom` için bölge kırpar. region = (x0, y0, x1, y1), **model uzayında**.
+
+        Bölge modelin gördüğü kareden kesiliyor: küçültme varsa önce kare
+        modele gönderildiği boyuta indirgenir, sonra kırpılır. Aksi hâlde
+        model hiç görmediği fiziksel piksellerden bir bölge büyütmüş olur
+        ve gördüğü karenin koordinatlarıyla uyuşmazdı.
+
+        Çıkan görüntü de model uzayında ve her zaman sınırların içinde:
+        sınırlara sığan bir karenin her alt bölgesi de sığar (piksel olarak
+        eşit ya da daha küçük, token sayısı da eşit ya da daha az).
+        """
         x0, y0, x1, y1 = region
         if not (0 <= x0 < x1 <= self.width and 0 <= y0 < y1 <= self.height):
             raise ValueError(
                 f"The region {region} is outside the {self.width}x{self.height} frame"
             )
-        return self.image.crop(region)
+        return self.model_gorsel().crop(region)
 
 
 class ScreenCapture:
@@ -137,9 +186,8 @@ class ScreenCapture:
             }
         )
         image = Image.frombytes("RGB", raw.size, raw.bgra, "raw", "BGRX")
-        return Frame(
-            display_index=target.index,
-            width=target.width,
-            height=target.height,
-            image=image,
-        )
+        # Küçültme kararı burada, tek yerde: `Frame.from_capture` sınırlara
+        # sığmayan kareyi modele gideceği boyuta indirir ve o boyutu
+        # `width`/`height` olarak yazar. Tıklama çevirisi aynı sayıları
+        # okuduğu için ölçek matematiği ikinci kez yazılmıyor.
+        return Frame.from_capture(target.index, image)

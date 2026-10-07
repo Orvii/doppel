@@ -19,7 +19,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from backend.computer import input as kb  # noqa: E402
 from backend.computer.capture import ScreenCapture  # noqa: E402
 from backend.computer import windows as win  # noqa: E402
-from backend.computer.displays import enumerate_displays, set_dpi_awareness  # noqa: E402
+from backend.computer.displays import (  # noqa: E402
+    enumerate_displays,
+    model_kare_boyutu,
+    set_dpi_awareness,
+)
 
 TURKCE = "Ajan iskeleti ayakta. ğüşıöç ĞÜŞİÖÇ — 1234 %&/ → tamam."
 
@@ -39,12 +43,16 @@ def check_capture(out_dir: Path) -> None:
 
             path = out_dir / f"display{display.index}.png"
             path.write_bytes(png)
+            kare_en, kare_boy = model_kare_boyutu(display.width, display.height)
+            model_notu = (
+                f" → modele {kare_en}x{kare_boy}"
+                if (kare_en, kare_boy) != (display.width, display.height)
+                else ""
+            )
             print(
-                f"  ekran {display.index}: {frame.width}x{frame.height}, "
+                f"  ekran {display.index}: {display.width}x{display.height}{model_notu}, "
                 f"{len(png) / 1024:.0f} KB, {elapsed:.0f} ms -> {path}"
             )
-            if display.needs_downscale:
-                print("    WARNING: the long edge exceeds the 2576 px limit; downscaling is needed")
 
         # zoom yolu: kırpma kaynak kareden geliyor, yeniden yakalamadan.
         frame = capture.grab(0)

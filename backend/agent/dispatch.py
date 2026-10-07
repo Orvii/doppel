@@ -25,7 +25,7 @@ from ..computer import input as kb
 from ..computer import uia
 from ..computer import windows as win
 from ..computer.capture import ScreenCapture
-from ..computer.displays import DisplayMap
+from ..computer.displays import DisplayMap, model_noktasini_buyut
 from ..computer.kayit import EkranKaydi, KayitHatasi
 from ..computer.masaustu import Calisma, MasaustuHatasi, pencere_bilgisi
 from ..computer.mesaj import DesteklenmiyorHatasi, Girdi
@@ -653,8 +653,15 @@ class Dispatcher:
             c = payload.get("coordinate")
             if not (isinstance(c, (list, tuple)) and len(c) == 2):
                 raise ToolError(f"{action} needs coordinate [x, y].")
-            # Model pencereye göre konuşuyor; masaüstü uzayına taşı.
-            return pencere.x + int(c[0]), pencere.y + int(c[1])
+            # Model pencereye göre konuşuyor **ve** pencere karesi küçültme
+            # gerektirmiş olabilir (2576 px kenarı ya da token bütçesini
+            # aşan bir pencere). Önce model uzayından fiziksel piksele,
+            # sonra masaüstü uzayına. Dönüşüm monitör yoluyla aynı
+            # fonksiyondan: `model_noktasini_buyut`.
+            gercek_x, gercek_y = model_noktasini_buyut(
+                int(c[0]), int(c[1]), pencere.en, pencere.boy
+            )
+            return pencere.x + gercek_x, pencere.y + gercek_y
 
         try:
             if action in ("click", "right_click", "double_click"):

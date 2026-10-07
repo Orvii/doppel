@@ -485,6 +485,7 @@ class Calisma:
                 gorsel, imlec[0] - p.x, imlec[1] - p.y,
                 [(ix - p.x, iy - p.y) for ix, iy in iz], tik,
             )
-        return Frame(
-            display_index=GIZLI_EKRAN, width=p.en, height=p.boy, image=gorsel
-        )
+        # Küçültme kararı monitör yolundakiyle aynı fonksiyondan geçiyor:
+        # penceresi 2576 px'i ya da token bütçesini aşan bir kare
+        # küçültülmeden gönderilirse API onu reddeder.
+        return Frame.from_capture(GIZLI_EKRAN, gorsel)
