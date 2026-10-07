@@ -225,7 +225,7 @@ class MasaPenceresi(QWidget):
         # Ayrı bir pencere değil, sayfa. Kendi başına da açılabilsin diye
         # başlığı duruyor; asgari boy küçük tutuluyor, yoksa gömüldüğü
         # pencerenin en küçük boyunu o belirliyor.
-        self.setWindowTitle("Yan Masa — the agent's desk")
+        self.setWindowTitle("Doppel — the agent's desk")
         self.setMinimumSize(480, 300)
         self.setAutoFillBackground(False)
 

@@ -280,7 +280,7 @@ class MainWindow(QMainWindow):
         self.t = t
         panels.set_tokens(t)
 
-        self.setWindowTitle("Yan Masa")
+        self.setWindowTitle("Doppel")
         self.resize(1500, 940)
 
         self._phase = "bos"

@@ -22,6 +22,12 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+#: Kullanıcının veri klasörü: düğmeler, yetenekler, akışlar, MCP ayarı.
+#: Ürün 2026-10-07'de Yan Masa'dan Doppel'e geçti ama bu yol **taşınmadı**:
+#: kurulu bir makinede yetenekler ve düğmeler burada duruyor ve yolu
+#: değiştirmek onları sahipsiz bırakırdı. Ad zaten ürünün adı değil,
+#: "ajan"dan geliyor; eski adı da taşımıyordu. Taşımak isteyen
+#: `AJAN_STATE_DIR` ile taşır.
 STATE_DIR = Path(os.environ.get("AJAN_STATE_DIR") or (Path.home() / ".ajan"))
 BUTTON_FILE = STATE_DIR / "dugmeler.json"
 

@@ -1,15 +1,16 @@
-# Yan Masa
+# Doppel
 
 > İngilizce README: [README.md](README.md). Bu belge uzun hâli —
 > her kararın arkasındaki ölçümlerle.
 
-Yan masanda oturan bir bilgisayar kontrol ajanı. Ekranı Claude Opus 5'in
-`computer_toolset_20260801` araç setiyle görüyor, fareyi ve klavyeyi ham Win32
-`SendInput` ile sürüyor.
+Kendi yan masasında oturan bir bilgisayar kontrol ajanı. Ekranı Claude Opus
+5'in `computer_toolset_20260801` araç setiyle görüyor, fareyi ve klavyeyi ham
+Win32 `SendInput` ile sürüyor.
 
-Adı buradan geliyor: ajanın **kendi masaüstü ve kendi imleci** var. Uzun bir
-işi görünmez bir çalışma alanında yaparken senin faren, odağın ve
-pencerelerin sende kalıyor — ikiniz aynı anda çalışabiliyorsunuz.
+Ürünün eski adı Yan Masa'ydı; 2026-10-07'de Doppel oldu. Ajanın **kendi
+masaüstü ve kendi imleci** var: uzun bir işi görünmez bir çalışma alanında
+yaparken senin faren, odağın ve pencerelerin sende kalıyor — ikiniz aynı
+anda çalışabiliyorsunuz.
 
 Yerel bir Qt (PySide6) masaüstü uygulaması — web katmanı, tarayıcı motoru ya
 da HTTP köprüsü yok. Görsel dil Windows 11 Fluent; renkler ve tema kayıt
@@ -38,7 +39,7 @@ OmniParser/Qwen-VL sınıfı bir model çalışmıyor.
 ## Arayüz
 
 ```
-.venv/Scripts/pythonw.exe yanmasa.py
+.venv/Scripts/pythonw.exe doppel.py
 ```
 
 İki pencere açılır:
@@ -277,7 +278,7 @@ bir güncelleme onları silmemeli. `AJAN_STATE_DIR` ile taşınabiliyor.
 ## Çalıştırma ve doğrulama
 
 ```
-.venv/Scripts/pythonw.exe yanmasa.py                          # uygulama
+.venv/Scripts/pythonw.exe doppel.py                          # uygulama
 .venv/Scripts/python.exe -m pytest tests -q                # saf mantık, 654 test
 .venv/Scripts/python.exe scripts/check_phase1.py           # yakalama, ekrana dokunmaz
 .venv/Scripts/python.exe scripts/check_phase1.py --input   # Notepad'e Türkçe yazar
@@ -960,7 +961,7 @@ app/
   etiketler.py          araç adlarının insan diline karşılığı
   sheet_view.py         Excel benzeri tablo: formül çubuğu, sayfa sekmeleri
   panels.py             tablo, yazı, kod, terminal, değişiklik listesi
-yanmasa.py              masaüstü uygulaması girişi
+doppel.py               masaüstü uygulaması girişi
 scripts/
   check_phase1.py       yakalama ve girdi elle doğrulama
   ajan.py               terminal arayüzü (ajan çekirdeği)

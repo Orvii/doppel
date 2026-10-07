@@ -1078,12 +1078,12 @@ class TestUygulamaKurulumu:
         bar.close()
 
     def test_ana_dongunun_bagladigi_alanlar_var(self):
-        # `yanmasa.py` içinde `window.<x>` ve `bar.<x>` diye erişilen her alan
+        # `doppel.py` içinde `window.<x>` ve `bar.<x>` diye erişilen her alan
         # gerçekten tanımlı mı — eksikse uygulama açılmıyor.
         import re
         from pathlib import Path
 
-        source = Path(__file__).resolve().parent.parent / "yanmasa.py"
+        source = Path(__file__).resolve().parent.parent / "doppel.py"
         text = source.read_text(encoding="utf-8")
 
         app = self._app()
@@ -1100,7 +1100,7 @@ class TestUygulamaKurulumu:
             for alan in set(re.findall(rf"\b{ad}\.([A-Za-z_][A-Za-z0-9_]*)", text)):
                 if not hasattr(nesne, alan):
                     eksik.append(f"{ad}.{alan}")
-        assert not eksik, f"yanmasa.py olmayan alanlara bağlanıyor: {eksik}"
+        assert not eksik, f"doppel.py olmayan alanlara bağlanıyor: {eksik}"
         for nesne in nesneler.values():
             nesne.close()
 
@@ -1977,12 +1977,12 @@ class TestIdeGorunumu:
     """Ajanın yazdığı kodu gösteren panel."""
 
     def test_ortak_klasor_tek_dosyada_kendi_klasoru(self, tmp_path):
-        import yanmasa as ajan
+        import doppel as ajan
         (tmp_path / "a.py").write_text("x")
         assert ajan._ortak_klasor([str(tmp_path / "a.py")]) == str(tmp_path.resolve())
 
     def test_ortak_klasor_alt_klasorleri_topluyor(self, tmp_path):
-        import yanmasa as ajan
+        import doppel as ajan
         (tmp_path / "src").mkdir()
         (tmp_path / "tests").mkdir()
         kok = ajan._ortak_klasor([
@@ -1993,7 +1993,7 @@ class TestIdeGorunumu:
     def test_ortak_klasor_farkli_surucude_patlamiyor(self):
         # `commonpath` farklı sürücülerde ValueError atıyor; panel bu
         # yüzden hiç açılmamamalı değil.
-        import yanmasa as ajan
+        import doppel as ajan
         assert ajan._ortak_klasor([r"C:\a\x.py", r"D:\b\y.py"]).startswith("C:")
 
     def test_agac_gurultuyu_atliyor(self, tmp_path, qt_app):
@@ -2357,7 +2357,7 @@ class TestAkisBaglantisi:
 
     def test_arayuz_akisi_dinliyor(self):
         import inspect
-        import yanmasa as ajan
+        import doppel as ajan
         kaynak = inspect.getsource(ajan.main)
         assert "bridge.said.connect" in kaynak
         assert "bridge.pulse.connect" in kaynak
@@ -2371,7 +2371,7 @@ class TestAkisBaglantisi:
     def test_bitis_akan_metni_silmiyor(self):
         # Tur bitince say() çağırmak, ilk adımların anlatımını siler.
         import inspect
-        import yanmasa as ajan
+        import doppel as ajan
         kaynak = inspect.getsource(ajan.main)
         govde = kaynak[kaynak.index("def on_finished"):]
         govde = govde[:govde.index("def on_failed")]
@@ -2452,7 +2452,7 @@ class TestAkisDokumu:
         # Çubuk zaten gözünün olduğu yer; adımları görmek için ana
         # pencereye bakmak gerekmemeli.
         import inspect
-        import yanmasa as ajan
+        import doppel as ajan
         kaynak = inspect.getsource(ajan.main)
         assert "bar.add_step(" in kaynak
         assert "bar.add_user(" in kaynak
@@ -2489,7 +2489,7 @@ class TestAjanKafasi:
         # Rastgele kıpırdayan bir maskot süs olurdu; bakış tıklanacak yeri
         # gösteriyor.
         import inspect
-        import yanmasa as ajan
+        import doppel as ajan
         kaynak = inspect.getsource(ajan.main)
         assert "look_at" in kaynak and "coordinate" in kaynak
 
@@ -3236,7 +3236,7 @@ class TestDurdurma:
     def test_cubuk_durdurmaya_bagli(self):
         # Ana pencerede bir düğme vardı ama insan çubuğa bakıyor.
         import inspect
-        import yanmasa as ajan
+        import doppel as ajan
         kaynak = inspect.getsource(ajan.main)
         assert "bar.stop_requested.connect(bridge.stop)" in kaynak
 
@@ -3303,7 +3303,7 @@ class TestArayuzKusurlari:
     def test_her_aracin_turkce_adi_var(self):
         # "wait wait" diye görünüyordu: 25 aracın etiketi yoktu ve ham
         # İngilizce adı iki kez yazılıyordu.
-        import yanmasa as ajan
+        import doppel as ajan
         from backend.agent.tools import CUSTOM_TOOLS
         computer = [
             "screenshot", "zoom", "cursor_position", "left_click",
@@ -3316,7 +3316,7 @@ class TestArayuzKusurlari:
         assert eksik == [], eksik
 
     def test_detay_arac_adini_tekrar_etmiyor(self):
-        import yanmasa as ajan
+        import doppel as ajan
         op = ajan._describe("wait", {"duration": 2})
         assert op.tool == "Waiting"
         assert op.detail == ""
