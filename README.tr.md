@@ -782,7 +782,12 @@ olmamalı.
    silme, mesaj gönderme).
 2. **`safety/gate.py`** komutu desen eşleştirmeyle sınıflandırır ve riskliyse
    onay ister. Prompt'a değil koda gömülü, çünkü prompt bir öneri, kapı bir
-   mekanizma. Onay kancası bağlanmamışsa varsayılan **red**.
+   mekanizma. Onay kancası bağlanmamışsa varsayılan **red**. Tıklamada
+   yalnızca pencere başlığına değil, tıklanan denetimin etiketine de
+   bakılıyor: sıradan bir penceredeki "Gönder", "Öde" ya da "Sil" düğmesi
+   onay istiyor; sağ ve orta tık da aynı süzgeçten geçiyor. Tanınmayan araç
+   adı çalıştırılmadan önce soruluyor — güvenli araçlar açık bir listede,
+   yoksa depoya sonradan eklenen bir araç sessizce kapısız kalırdı.
 3. **`safety/killswitch.py`** Esc ×3 ile döngüyü keser. Ayrı thread'de
    yoklama yapıyor, ajan ne yaparsa yapsın cevap verir.
 
