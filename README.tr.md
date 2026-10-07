@@ -25,13 +25,21 @@ yok — "Ne eksik, ne kırık" bölümü hepsini sayıyor.
 
 Ekranı okuyan modeli biz yazmıyoruz. Claude'un computer araç seti GA ve
 `claude-opus-5` destekliyor; `screenshot`, `zoom`, `left_click`, `type`, `key`
-gibi 17 üye aracı var ve koordinatları ekran görüntüsü piksel uzayında,
-**1:1**. Bize düşen Windows tarafındaki el: kareyi yakalamak ve modelin
-söylediği piksele gerçekten tıklamak.
+gibi 17 üye aracı var ve koordinatları modele gönderilen karenin piksel
+uzayında. Bize düşen Windows tarafındaki el: kareyi yakalamak, sınırlara
+sığdırmak ve modelin söylediği piksele gerçekten tıklamak.
 
+Modelin kabul ettiği kare iki sınırın altında olmak zorunda: uzun kenar en
+çok 2576 px **ve** görsel token sayısı en çok 4784 (28×28 piksel bir token).
 Bu makinede iki adet 1920×1080 monitör var, yani sanal masaüstü 3840×1080.
-Uzun kenar modelin 2576 px sınırını aştığı için **monitör başına** yakalıyoruz;
-her kare 1920×1080, küçültme yok, koordinat matematiği yok.
+Tüm masaüstünü tek kare olarak göndermek hem kenarı aşıyor hem token
+bütçesini, o yüzden **monitör başına** yakalıyoruz; her kare 1920×1080, iki
+sınırın da altında, küçültme yok, bu makinede koordinat matematiği tam 1:1.
+
+Kural yine de koda gömülü değil: `model_kare_boyutu` her kareyi sınırlara
+göre boyutlandırır ve tıklama çevirisi aynı fonksiyonu okur. 4K bir monitör
+ya da yan masada büyük bir pencere takıldığında ölçek kendiliğinden girer —
+sessizce yanlış yere tıklamak yerine hesaplanmış bir ölçekle.
 
 Yerel bir görüntü modeli seçenek değil: bu makinedeki RX 560 (4 GB) üzerinde
 OmniParser/Qwen-VL sınıfı bir model çalışmıyor.
