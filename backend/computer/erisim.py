@@ -272,10 +272,18 @@ def esc_okuyucu() -> Callable[[], bool] | None:
     """Esc'in o an basılı olup olmadığını söyleyen bir çağrılabilir.
 
     Windows: `GetAsyncKeyState` (mevcut davranış aynen).
-    X11/Wayland: `Xlib` kuruluysa `XQueryKeymap` — süreç içinde, ayrıcalık
-    istemiyor, XTEST kısıtından etkilenmiyor. Kurulu değilse None döner ve
-    killswitch yalnızca UI durdur düğmesi + SIGINT/SIGTERM ile çalışır:
-    bunu bir bağımlılık uğruna zorlamak yerine sınırı dürüstçe söylüyoruz.
+    X11: `Xlib` kuruluysa `XQueryKeymap` — süreç içinde, ayrıcalık
+    istemiyor, XTEST kısıtından etkilenmiyor.
+    Wayland: aynı yol **kısmen** okur — XWayland yalnızca bir X istemcisi
+    odaktayken tuşları görüyor, yerel pencere odaktayken kör. Portal
+    tarafında global tuş durumu diye bir okuma yok (port/wayland doğruladı:
+    RemoteDesktop yalnızca Notify* yazar, ScreenCast yalnızca akış verir),
+    o yüzden Wayland'de Esc iyimser bir deneme; asıl güvence UI durdur
+    düğmesi ve iyimser okuyucu tamamen yoksa bağlanan SIGINT/SIGTERM
+    yolu (killswitch.start yalnızca okuyucu None iken bağlar; konsol
+    Ctrl-C'si başka platformlarda eskisi gibi kalsın diye).
+    Kurulu değilse None döner: bir bağımlılık uğruna zorlamak yerine
+    sınırı söylüyoruz.
     """
     tur = oturum().tur
     if tur == "windows":
