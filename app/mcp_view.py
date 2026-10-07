@@ -23,9 +23,6 @@ paylaşılması demek.
 
 from __future__ import annotations
 
-import os
-import subprocess
-
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
@@ -40,6 +37,7 @@ from PySide6.QtWidgets import (
 from backend.mcp import ayar as ayar_mod
 from backend.mcp.istemci import Baglanti
 
+from . import isletim
 from .fluent import RADIUS_CARD, RADIUS_CONTROL, Tokens, _blend, sarmali
 from .glyphs import WorkGlyph
 
@@ -378,11 +376,20 @@ class McpGorunumu(QWidget):
             )
 
     def _dosyayi_ac(self) -> None:
+        """Örnek yapılandırmayı sistemin görüntüleyicisinde açar.
+
+        Açıcı platforma göre (`app/isletim.py`). Hiçbiri yoksa
+        patlamıyor: kullanıcıya yolu söyleyen bir uyarı çıkıyor —
+        sessiz kalmak düğmeyi bozuk gösterirdi, patlamak daha kötüsü.
+        """
         yol = ayar_mod.ornek_yaz()
         try:
-            os.startfile(str(yol))  # noqa: S606  (kullanıcının kendi dosyası)
+            isletim.dosya_ac(yol)
         except OSError:
-            subprocess.Popen(["notepad.exe", str(yol)])
+            QMessageBox.information(
+                self, "Could not open the file",
+                f"No file opener is available.\n\nThe example config is at:\n{yol}",
+            )
 
     def _tekrar_bagla(self) -> None:
         self.degisti.emit()

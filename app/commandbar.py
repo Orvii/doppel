@@ -57,6 +57,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import isletim
 from .buttons import ButtonStrip
 from .baloncuk import Baloncuk
 from .stream import Akis, RunRing
@@ -567,7 +568,14 @@ class CommandBar(QWidget):
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
         )
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        # Yarı saydam zemin yalnızca besteci varsa: yoksa Qt pencereyi
+        # **siyah bir kutu** olarak çiziyor ve köşede duran çubuk bozuk
+        # görünüyor. Sade zemin her hâlükârda kabul edilebilir, siyah
+        # kutu değil. Windows'ta DWM her zaman besteliyor, karar orada
+        # hep "var".
+        self._saydam = isletim.saydam_zemin_destekli()
+        if self._saydam:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFixedWidth(BAR_WIDTH)
 
         self._drag_from: QPoint | None = None

@@ -85,10 +85,11 @@ def _panel_for(shot, tokens):
 def main() -> int:
     # Süreç DPI farkındalığına alınmalı: ajan aynı süreçten ekran yakalayıp
     # koordinat hesaplıyor ve Qt'nin ölçeklemesi araya girerse tıklama
-    # yanlış piksele gider.
-    from backend.computer.displays import set_dpi_awareness
+    # yanlış piksele gider. Çağrı platforma bakıyor: Windows'ta aynı Win32
+    # çağrısı, Linux'ta yapılacak bir şey yok (ölçeklemeyi Qt yürütüyor).
+    from app import isletim
 
-    set_dpi_awareness()
+    isletim.dpi_farkindaligi()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Doppel")

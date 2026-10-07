@@ -36,6 +36,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from . import isletim
 from .fluent import RADIUS_CONTROL, Tokens
 from .glyphs import glyph_icon
 
@@ -138,7 +139,9 @@ class ConnectDialog(QDialog):
         form.addRow("Port", self.port)
 
         self.key = QLineEdit()
-        self.key.setPlaceholderText("C:\\Users\\...\\.ssh\\id_ed25519")
+        # Yer tutucu platformun kendi yol biçimi; Linux'ta `C:\Users\...`
+        # yanlış bir yol gösterirdi.
+        self.key.setPlaceholderText(isletim.anahtar_ipucu())
         self.key.setStyleSheet(self._field(t))
         form.addRow("Anahtar", self.key)
         layout.addLayout(form)
