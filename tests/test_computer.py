@@ -119,19 +119,31 @@ class TestParseCombo:
 
 
 class TestTypeText:
-    """Toplu gönderim regresyonu.
+    """Toplu gönderim regresyonu — Windows SendInput yolu.
 
     İlk sürüm 24 karakteri tek SendInput çağrısında topluyordu ve 55
     karakterlik bir metin hedefe 39 karakter olarak düşüyordu. Zamanlamayı
     test edemeyiz, ama "karakter başına bir çağrı" sözleşmesini edebiliriz.
+
+    Port notu: `_send` artık `girdi_win32.py`'de; gerçek Windows API'sine
+    dokunulmasın diye `_surucu` sahteleniyor ve gerçek `girdi_win32`
+    modülü `_send` düzeyinde kesiliyor. Linux'ta bu test atlanır — orada
+    yazma xdotool/ydotool alt sürecinden geçiyor ve sözleşmesi farklı
+    (tek çağrı, karakter başına değil); Linux kurgusu ayrı bir test
+    dosyasında (`test_girdi_x11.py`) sahtelenen alt süreçle sınanıyor.
     """
 
     def _capture(self, monkeypatch):
-        from backend.computer import input as kb
+        import sys
+
+        if sys.platform != "win32":
+            pytest.skip("SendInput path is Windows-only")
+        from backend.computer import girdi_win32, input as kb
 
         calls: list[int] = []
-        monkeypatch.setattr(kb, "_send", lambda *events: calls.append(len(events)))
-        monkeypatch.setattr(kb.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(girdi_win32, "_send", lambda *events: calls.append(len(events)))
+        monkeypatch.setattr(girdi_win32.time, "sleep", lambda _s: None)
+        monkeypatch.setattr(kb, "_surucu", lambda _g=None: girdi_win32)
         return kb, calls
 
     def test_karakter_basina_bir_cagri(self, monkeypatch):
