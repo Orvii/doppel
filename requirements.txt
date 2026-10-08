@@ -1,3 +1,13 @@
+# ORTAK paketler — Windows'ta da Linux'ta da kurulur. Platforma özel
+# olanlar ayrı dosyada; kurulum ikisini birden okur:
+#
+#   Windows:  pip install -r requirements.txt -r requirements-windows.txt
+#   Linux:    pip install -r requirements.txt -r requirements-linux.txt
+#
+# Bu dosya "her yerde kurulabilir" demek. İçine Windows'a özel bir paket
+# koymak, Linux kurulumunu olmayan bir şeyi kurmaya çalıştırır; ayrımın
+# tek sebebi bu.
+
 # Ekran yakalama ve girdi
 mss==10.1.0
 pillow==12.3.0
@@ -10,11 +20,11 @@ python-dotenv==1.1.1
 # süreçler ve çoğu npx ile geliyor; bu paket yalnızca istemci tarafı.
 mcp==2.1.1
 
-# UI Automation yan kanalı
-uiautomation==2.0.29
+# NOT: UI Automation (uiautomation) ve ConPTY (pywinpty) Windows'a özel;
+# requirements-windows.txt'ye taşındı. Linux'ta karşılıkları ayrı yollarla
+# geliyor (AT-SPI, yerel pty).
 
-# Terminal: ConPTY oturumu ve ekranı metne çeviren emülatör
-pywinpty==3.0.5
+# Terminal: ekranı metne çeviren emülatör — saf Python, her platformda.
 pyte==0.8.2
 
 # Kendi ofisimiz — Microsoft Office kurulu değil, gerekmiyor
