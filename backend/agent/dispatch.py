@@ -76,6 +76,55 @@ class ToolOutcome:
     dogrulama: str | None = None
 
 
+def _acici_bayraklari() -> dict[str, Any]:
+    """`Popen` için "pencere açma" bayrağı: Windows'ta var, Linux'ta yok.
+
+    Varlık yoklaması, `sys.platform` dalı değil: bayrak yoksa hiç
+    geçilmiyor (Linux'ta ayrı süreç konsola bağlanmıyor zaten).
+    """
+    bayrak = getattr(subprocess, "CREATE_NO_WINDOW", None)
+    return {"creationflags": bayrak} if bayrak is not None else {}
+
+
+def _on_plan_okunur() -> tuple[str, bool]:
+    """`(başlık, izlenebilir)` — ön plan okunamayan oturumda başlık boş.
+
+    Wayland/ekransızda pencere yönetimi hiç yok; `launch_app` orada
+    "öne gelmedi" hükmünü veremez (veremeyeceği bir gözlemi rapor etmiş
+    olurdu). İkinci alan çağırana bunu söylüyor.
+    """
+    try:
+        return win.foreground_title(), True
+    except win.PencereYonetimiYokHatasi:
+        return "", False
+
+
+def _kabuk_argv(command: str) -> list[str]:
+    """Kabuk komutunu çalıştıracak argv. Windows PowerShell, Linux `$SHELL`/sh.
+
+    Komut metni argv'nin tek üyesi olarak gidiyor (kabuk içinde yorumlanır
+    — `run_shell` sözleşmesi bu); kabuk yokluğu `KomutYokHatasi`ya değil,
+    `subprocess`ın kendi `FileNotFoundError`ına düşer ve o hata
+    `_do_run_shell`ın `OSError` yakalayıcısında modele söylenir.
+    """
+    from ..computer import erisim
+
+    if erisim.oturum().tur == "windows":
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+    return ["/bin/sh", "-c", command]
+
+
+def _varsayila_acici(url: str) -> None:
+    """URL'yi sistemin varsayılan tarayıcısıyla açar. Windows `os.startfile`,
+    Linux `xdg-open` — seçim `erisim`e soruluyor, platform dalı orada yaşar."""
+    from ..computer import erisim
+
+    if erisim.oturum().tur == "windows":
+        os.startfile(url)
+        return
+    subprocess.Popen(["xdg-open", url], **_acici_bayraklari())
+
+
 def _image_block(data: bytes, media_type: str) -> list[dict[str, Any]]:
     return [
         {
@@ -300,16 +349,22 @@ class Dispatcher:
             return ToolOutcome(content=metin or to_text(panel))
         return ToolOutcome(content=str(result) if result is not None else "OK")
 
-    def _hedef_etiketi(self, name: str, payload: dict[str, Any]) -> str:
-        """Tıklanacak denetimin UIA etiketi. Okunamıyorsa boş dize.
+    def _hedef_etiketi(self, name: str, payload: dict[str, Any]) -> tuple[str, bool]:
+        """Tıklanacak denetimin etiketi ve okunabilirliği: `(metin, okunabilir)`.
 
-        Okunamadığında güvenli taraf SAFE: UIA'nın sustuğu yerde (oyun,
-        tuval, yükseltilmiş pencere) her tıklamaya onay sormak, sıradan
-        bir tıklamayı sürekli onaya düşürür ve yorgunluk kapıyı işlevsiz
-        kılar; pencere başlığı süzgeci o yerlerde yine çalışıyor.
+        İki ayrı hâl (`uia.etiket_noktada`nın sözleşmesi): "noktada adı olan
+        denetim yok" → okunabilir, boş metin; "erişilebilirlik katmanı soruya
+        cevap veremedi" → okunamadı. İkincisi SAFE sayılamaz — sessiz SAFE
+        tam olarak orada doğar. Windows uygulaması değişmiyor: `imza_noktada`
+        denetimi bulamadığında (oyun, tuval, yükseltilmiş pencere) cevap yine
+        okunabilir-boş ve karar SAFE kalıyor.
+
+        Ölü COM, erişim reddi, kırpılmış koordinat: hepsi normal, okunabilir
+        boş kabul edilip karar pencere başlığına bırakılıyor. Koordinat
+        gerçekten bozuksa işleyici kendi hatasını zaten verecek.
         """
         if name not in gate.CLICK_TOOLS:
-            return ""
+            return "", True
         nokta = payload.get("coordinate")
         try:
             if nokta is None:
@@ -319,22 +374,27 @@ class Dispatcher:
             elif isinstance(nokta, (list, tuple)) and len(nokta) == 2:
                 vx, vy = self._virtual(nokta)
             else:
-                return ""
-            imza = imza_noktada(vx, vy)
+                return "", True
+            etiket = uia.etiket_noktada(vx, vy)
         except Exception:
-            # Ölü COM, erişim reddi, kırpılmış koordinat: hepsi normal,
-            # etiketsiz karar kapıyı düşürmemeli. Koordinat gerçekten
-            # bozuksa işleyici kendi hatasını zaten verecek.
-            return ""
-        return imza.ad if imza is not None else ""
+            return "", True
+        return etiket.metin, etiket.okunabilir
 
     def _gate(self, name: str, payload: dict[str, Any]) -> None:
         """Riskli eylemde onay ister. Onay yoksa eylem hiç çalışmaz."""
+        etiket, okunabilir = self._hedef_etiketi(name, payload)
+        try:
+            baslik = win.foreground_title()
+        except win.PencereYonetimiYokHatasi:
+            # Wayland'de ön plan okunamıyor; kapı yine de çalışmalı ve
+            # başlık süzgeci devre dışı kalırken etiket süzgeci kalsın.
+            baslik = ""
         verdict = gate.classify(
             name,
             payload,
-            window_title=win.foreground_title(),
-            label=self._hedef_etiketi(name, payload),
+            window_title=baslik,
+            label=etiket,
+            label_okunabilir=okunabilir,
         )
         if not verdict.needs_confirmation:
             return
@@ -962,10 +1022,10 @@ class Dispatcher:
             raise ToolError("launch_app needs target")
         arguments = str(payload.get("arguments", "")).strip()
 
-        before = win.foreground_title()
+        before, izlenebilir = _on_plan_okunur()
         try:
             if target.startswith(("http://", "https://")):
-                os.startfile(target)
+                _varsayila_acici(target)
                 expect = None
             else:
                 # Önce PATH, sonra kurulu uygulamalar kataloğu. Windows'ta
@@ -989,18 +1049,20 @@ class Dispatcher:
                     argv = apps.launch_argv(app)
                     subprocess.Popen(
                         argv + ([arguments] if arguments else []),
-                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        **_acici_bayraklari(),
                     )
                     # Kısayol ve mağaza girdileri explorer üzerinden
                     # açılıyor; öne gelecek pencere explorer değil, o yüzden
-                    # süreç adına göre bekleme yapılamıyor.
+                    # süreç adına göre bekleme yapılamıyor. Linux'ta da
+                    # `.desktop` Exec'i ara bir program (gtk-launch) olabilir;
+                    # aynı gerekçe orada da geçerli.
                     expect = None
                 else:
                     resolved = yol or target
                     subprocess.Popen(
                         f'"{resolved}" {arguments}'.strip(),
                         shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        **_acici_bayraklari(),
                     )
                     expect = os.path.basename(resolved)
         except OSError as exc:
@@ -1008,6 +1070,16 @@ class Dispatcher:
 
         # Öne gelmesini bekle. Gelmezse modele söyle — sessizce devam edip
         # yanlış pencereye yazmak Faz 1'de tam olarak bu şekilde patlamıştı.
+        # Ön plan okunamayan oturumda (Wayland) bu izleme yapılamıyor:
+        # "açılmadı" demek yalan olurdu; ne bilindiği söyleniyor.
+        if not izlenebilir:
+            return ToolOutcome(
+                content=(
+                    f"{target} was launched, but this session cannot report "
+                    "which window has focus (no window-management support). "
+                    "Take a screenshot to see what happened."
+                )
+            )
         appeared = self._wait_for_new_foreground(before, expect)
         now = win.foreground_title()
         if not appeared:
@@ -1055,13 +1127,13 @@ class Dispatcher:
 
         try:
             completed = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                _kabuk_argv(command),
                 capture_output=True,
                 timeout=timeout,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **_acici_bayraklari(),
             )
         except subprocess.TimeoutExpired:
             raise ToolError(

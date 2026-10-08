@@ -12,13 +12,25 @@ Her yerde çalışmıyor: tuval çizen uygulamalar, oyunlar, video, uzak masaüs
 ve erişilebilirliği kapalı bazı Electron uygulamaları boş ya da yüzeysel ağaç
 verir. O durumda ekran görüntüsüne dönmek gerekiyor — `snapshot` bunu
 `SnapshotResult.thin` ile bildiriyor.
+
+## Port notu: platform seçimi `erisim`den
+
+Linux'ta aynı sözleşmeyi AT-SPI arka ucu (`uia_linux.py`) veriyor; seçim
+çağrı anında `erisim.oturum()`a soruluyor — başka yerde platform dalı yok.
+`uiautomation` toleranslı içe aktarılıyor: Linux'ta paket yok ve olamaz,
+modül yine de içe aktarılabilir kalmalı (yoksa ajanın kendisi Linux'ta
+açılmazdı); Windows yolu yanlış oturumda çağrılırsa `AttributeError` değil,
+ne olduğunu söyleyen bir hata veriyor.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-import uiautomation as auto
+try:  # uiautomation yalnızca Windows'ta; Linux'ta yok
+    import uiautomation as auto
+except ImportError:
+    auto = None  # type: ignore[assignment]
 
 from .displays import Display
 
@@ -50,13 +62,57 @@ class SnapshotResult:
         return self.node_count < THIN_BELOW
 
 
+def _auto():
+    """Windows UIA kökü; bu oturumda yoksa açık hata.
+
+    Windows dışında `uiautomation` içe aktarılmıyor ve ona dokunan her
+    çağrı `None` üzerinden `AttributeError` verirdi — "erişilebilirlik
+    yok" ile "yanlış arka uç seçildi" karışmasın diye tek kapı burası.
+    """
+    if auto is None:
+        raise RuntimeError(
+            "UI Automation is not available on this platform (uiautomation "
+            "is Windows-only). On Linux the AT-SPI backend (uia_linux.py) "
+            "serves the same interface."
+        )
+    return auto
+
+
+def _linux_arka_uc():
+    """Bu oturum Linux mu? Öyleyse AT-SPI modülü, değilse None.
+
+    `erisim` içe aktarılamazsa (beklenmez) Windows yolu korunuyor —
+    oturum sorusunun tek kaynağı orası, yedek dar ve bilinçli.
+    """
+    try:
+        from . import erisim
+
+        return None if erisim.oturum().tur == "windows" else _atspi()
+    except ImportError:  # pragma: no cover - erisim varken olmaz
+        return None
+
+
+def _atspi():
+    from . import uia_linux
+
+    return uia_linux
+
+
 def snapshot(
     display: Display,
     max_depth: int = MAX_DEPTH,
     max_nodes: int = MAX_NODES,
 ) -> SnapshotResult:
     """Ön plandaki pencerenin ağacını verilen ekranın koordinatlarında döndürür."""
-    window = auto.GetForegroundControl()
+    linux = _linux_arka_uc()
+    if linux is not None:
+        # Linux'ta `display` aktif monitör; AT-SPI koordinatı ya ham yazılsın
+        # (ekran verilmezse) ya da Windows'taki gibi model uzayına çevrilsin.
+        return linux.anlik_gorunum(
+            maks_derinlik=max_depth, maks_dugum=max_nodes, ekran=display
+        )
+
+    window = _auto().GetForegroundControl()
     if window is None:
         return SnapshotResult(text="There is no foreground window.", node_count=0, window_title="")
 
@@ -147,6 +203,43 @@ def _value_of(control) -> str:
     return ""
 
 
+def _imza_oku(vx: int, vy: int):
+    """Windows: noktadaki denetimin imzası (`workflows.imza.noktada`).
+
+    Ayrı bir fonksiyon: imza modülü `uiautomation`ı yalnızca çağrı anında
+    içe aktarıyor ve bu sarmalayıcı aynı zamanda testlerin sahteleme
+    noktası — kapı etiketinin kaynağı burada net görünsün.
+    """
+    from ..workflows.imza import noktada
+
+    return noktada(vx, vy)
+
+
+def etiket_noktada(vx: int, vy: int):
+    """Bir noktadaki denetimin etiketi — güvenlik kapısının girdisi.
+
+    Cevap `uia_linux.Etiket`tir ve iki hâli ayrı tutar: "noktada adı olan
+    denetim yok" (okunabilir, boş metin) ile "erişilebilirlik katmanı soruya
+    cevap veremedi" (okunamadı). Kapı bu ayrımı görmek zorunda; yoksa
+    okunamayan bir hedefe tıklama sessizce SAFE sayılır.
+
+    Windows'ta sözleşme bilinçli olarak eskisi gibi: noktada denetim
+    bulunamadığında (oyun, tuval, yükseltilmiş pencere) boş ama okunabilir
+    cevap dönüyor — o pencerelerde her tıklamaya onay sormak onay
+    yorgunluğu üretirdi ve pencere başlığı süzgeci orada yine çalışıyor.
+    """
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.etiket_noktada(vx, vy)
+    from .uia_linux import Etiket
+
+    try:
+        imza = _imza_oku(vx, vy)
+    except Exception:
+        imza = None
+    return Etiket(imza.ad if imza is not None else "", True)
+
+
 #: Odak özetindeki alanların sınırı. Her eylemden önce ve sonra okunuyor;
 #: büyük bir belgenin tamamını iki kez okumak adım başına sınırsız maliyet
 #: olurdu. 200 karakter yazılanı görmeye yetiyor; ötesindeki bir değişiklik
@@ -167,9 +260,15 @@ def odak_ozeti() -> tuple[str, str, str] | None:
     Okunamaması olağan: yükseltilmiş pencereler erişim reddi veriyor ve
     COM çağrısı her an düşebiliyor. `None` "değişiklik yok" demek değil,
     "bu bileşen karşılaştırılamadı" demek — ayrımı çağıran koruyor.
+    Linux'ta AT-SPI arka ucu aynı sözleşmeyi veriyor; pyatspi yokluğu da
+    buraya `None` olarak düşüyor — döngü zaten okunamazlık sayıyor ve
+    doğrulama üretmiyor.
     """
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.odak_ozeti()
     try:
-        control = auto.GetFocusedControl()
+        control = _auto().GetFocusedControl()
         if control is None:
             return None
         tur = control.ControlTypeName.removesuffix("Control")[:40]
