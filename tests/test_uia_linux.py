@@ -403,7 +403,7 @@ class TestSecim:
         assert etiket.okunabilir is True
 
 
-class TestUiauDegismedi:
+class TestUiaDegismedi:
     """Windows uia.py'nin dışa vurduğu işaretler duruyor."""
 
     def test_icerikler_aynen(self):

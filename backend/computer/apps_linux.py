@@ -33,20 +33,15 @@ from __future__ import annotations
 
 import os
 import shlex
-import subprocess
 import time
 from pathlib import Path
 
 #: Windows tarafındakiyle aynı önbellek süresi ve aynı gerekçe: uygulama
 #: kurmak seyrek bir iş, her `launch_app` çağrısında yüzlerce dosyayı
 #: taramanın anlamı yok.
-from .apps import CACHE_SECONDS, App, normalise, _tokens
+from .apps import CACHE_SECONDS, App
 
-#: Exec'te temizlenen alan kodları. `%%` ayrı ele alınıyor (tek `%`).
-ALAN_KODLARI = frozenset("fFuUiIckKdDnNvVm")
-
-#: Search'ün GenericName'i de sayması için `_tokens`u Genel ad üzerinde de
-#: koşuyoruz; ayrı sözlük yok, Windows tarafındaki gürültü listesi geçerli.
+#: `XDG_DATA_DIRS` set değilse standardın kendi varsayılanı.
 _XDG_VARSAYILAN_DATA = "/usr/local/share:/usr/share"
 
 
