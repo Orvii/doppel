@@ -52,12 +52,21 @@
 #   (XQueryKeymap) BİLEREK DOĞRULANMAMIŞ: Xvfb'de okunacak gerçek bir tuş
 #   durumu yok, kurmak CI'yı kanıt olmadan yeşil gösterirdi. Gerçek bir
 #   X11 masaüstünde biri koşturana kadar öyle kalıyor.
-# - BİLİNEN AÇIK (2026-10-07): `app/single.py`, `app/kisayol.py`,
-#   `app/baslangic.py`, `app/fluent.py` modül düzeyinde winreg/ctypes.windll
-#   kullanıyor ve henüz Linux'ta korunmadı. app/single.py'yi
-#   tests/test_computer.py modül düzeyinde içe aldığı için o dosyanın
-#   Linux'ta toplanması, app/ iş kolu korumayı yapana kadar düşebilir.
-#   Bu atanmış bir açık; iş akışı onu gizlemiyor, kırmızı gösteriyor.
+# - app/ katmanı (2026-10-08, port/arayuz): `app/single.py`,
+#   `app/kisayol.py`, `app/baslangic.py`, `app/fluent.py` modül düzeyinde
+#   winreg/ctypes.windll'i artık **toleranslı ithal** ediyor (ad her
+#   platformda var, yokluk None; dala giren çağrı açık hata verir).
+#   Karar tek seam'de: `app/isletim.py` `WINDOWS`. Kanıt: alt süreç
+#   simülasyonu `tests/test_isletim.py::TestLinuxIceAktarma` +
+#   `tests/test_linux_import_guvenligi.py`. Kısayol kaydı Linux'ta
+#   bilinçli olarak yok; dürüst bozulma `TestKisayolLinux` ile sınanıyor.
+#   Toplama artık Linux'ta düşmüyor (3 collect hatası -> 0; 922 test
+#   koşuyor). Kalan kırmızı backend port iş kollarında ve adı burada:
+#   `backend/computer/apps.py:28` (`import winreg`), `backend/computer/
+#   uia.py:21` (`import uiautomation`), `backend/computer/windows.py:112`
+#   (`ctypes.WINFUNCTYPE`) ve `backend/computer/goruntu_x11.py` (xrandr
+#   yoklaması). Bu dosyalar bu iş kolunun yüzeyi değil; port toplayınca
+#   kırmızı olarak görünmeleri kasıtlı — gizlenmiyorlar.
 #
 # ## Windows'ta NE koşuyor
 #

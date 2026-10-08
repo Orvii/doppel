@@ -1,4 +1,4 @@
-"""Fluent Design — Windows 11'in kendi tasarım dili.
+"""Fluent Design — masaüstünün kendi tasarım dili.
 
 Bu bir yorum değil, uyum. Uygulama Dosya Gezgini ve Ayarlar'ın yanında
 durduğunda oradan gelmiş gibi görünmeli: aynı yazı tipi, aynı köşe
@@ -11,12 +11,31 @@ bir palet yazmak, Fluent olduğunu iddia edip Fluent'in tek gerçek kuralını
 
 Token adları WinUI 3'ün kendi adları; başka bir yerden bakan biri
 karşılığını bulabilsin diye.
+
+## Linux'ta aynı kural, başka kaynak
+
+Kural değişmiyor — tema ve vurgu **sistemden** okunuyor — ama kaynak
+değişiyor. Windows'ta kayıt defteri (`Personalize`, `Accent` anahtarları);
+Linux'ta Qt'nin kendisi: `styleHints().colorScheme()` (Qt 6.5+) ve
+`QPalette.ColorRole.Accent` (Qt 6.6+). GNOME/KDE dışında vurgu kavramı
+olmayan masaüstleri var; orada bilinen varsayılana düşülüyor, palet
+uydurulmuyor.
+
+Linux dalı `winreg`'e **hiç dokunmuyor**, modülün kendisi de yalnızca
+Windows'ta içe aktarılıyor: `import winreg` satırı Linux'ta bir
+`ImportError` olurdu ve dosyanın geri kalanı okunamazdı.
 """
 
 from __future__ import annotations
 
-import winreg
 from dataclasses import dataclass
+
+from . import isletim
+
+if isletim.WINDOWS:
+    import winreg
+else:  # Linux: ad var, değer yok — aşağıdaki dallar da okunmuyor
+    winreg = None  # type: ignore[assignment]
 
 PERSONALIZE = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 ACCENT_KEY = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Accent"
@@ -28,6 +47,16 @@ RADIUS_CARD = 8
 #: Fluent boşluk ritmi.
 GAP = 4
 
+#: Vurgu okunamadığında kullanılan renk. Windows'un varsayılan mavisi;
+#: uydurmak yerine bilinen sistem varsayılanına düşmek doğru.
+VARSAYILAN_VURGU = "#0078D4"
+
+#: Windows'ta kayıt defterinden okunamayan vurgu için sekiz ton.
+VARSAYILAN_PALET = [
+    "#99EBFF", "#4CC2FF", "#0091F8", "#0078D4",
+    "#005EB7", "#003D92", "#001A68", "#68278F",
+]
+
 
 def _read(root, path: str, name: str):
     try:
@@ -37,7 +66,26 @@ def _read(root, path: str, name: str):
         return None
 
 
+def _olcek(renk: str, katsayi: float) -> str:
+    """Bir rengi açıp koyulaştırır; kanallar 0–255'te kırpılıyor."""
+    parca = [int(renk[i : i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(
+        f"{max(0, min(255, round(p * katsayi))):02x}" for p in parca
+    )
+
+
 def system_is_dark() -> bool:
+    """Masaüstü koyu temada mı.
+
+    Windows: `AppsUseLightTheme` sıfırsa koyu. Değer yoksa koyu sayılıyor
+    — eski Windows sürümlerinde anahtar yok ve koyu, uygulamanın kendi
+    tasarlandığı hâl.
+    """
+    if not isletim.WINDOWS:
+        # Linux: Qt'ye soruluyor. Bilmiyorsa (başsız platformlar,
+        # XDG portalı olmayan masaüstleri) koyu sayılıyor; Windows
+        # tarafındaki "değer yoksa koyu" kararıyla aynı.
+        return isletim.qt_koyu_tema() is not False
     value = _read(winreg.HKEY_CURRENT_USER, PERSONALIZE, "AppsUseLightTheme")
     return value == 0 if value is not None else True
 
@@ -55,15 +103,26 @@ def _blend(fg: str, alpha: float, bg: str) -> str:
 
 
 def accent_palette() -> list[str]:
-    """Sistemin vurgu paleti: en açıktan en koyuya sekiz renk."""
+    """Sistemin vurgu paleti: en açıktan en koyuya sekiz renk.
+
+    Windows'ta kayıt defterindeki sekiz tonlu `AccentPalette` blob'u
+    olduğu gibi okunuyor. Linux'ta böyle bir şey yok: Qt'nin verdiği tek
+    vurgu renginden türetiliyor (`_olcek`), çünkü paletin tüketicileri
+    (koyu temada açık ton kullanmak gibi) ton farkını bekliyor. Vurgu
+    hiç okunamazsa bilinen varsayılan palet dönüyor.
+    """
+    if not isletim.WINDOWS:
+        vurgu = isletim.qt_vurgu_rengi() or VARSAYILAN_VURGU
+        return [
+            _olcek(vurgu, 1.45), _olcek(vurgu, 1.20), vurgu, _olcek(vurgu, 0.88),
+            _olcek(vurgu, 0.72), _olcek(vurgu, 0.55), _olcek(vurgu, 0.38),
+            _olcek(vurgu, 0.28),
+        ]
     blob = _read(winreg.HKEY_CURRENT_USER, ACCENT_KEY, "AccentPalette")
     if not blob or len(blob) < 32:
         # Windows'un varsayılan mavisi. Kayıt okunamadıysa uydurmak yerine
         # bilinen sistem varsayılanına düşmek doğru.
-        return [
-            "#99EBFF", "#4CC2FF", "#0091F8", "#0078D4",
-            "#005EB7", "#003D92", "#001A68", "#68278F",
-        ]
+        return list(VARSAYILAN_PALET)
     return [
         "#{:02x}{:02x}{:02x}".format(blob[i * 4 + 2], blob[i * 4 + 1], blob[i * 4])
         for i in range(8)
@@ -109,16 +168,18 @@ class Tokens:
 
     @property
     def font_ui(self) -> str:
-        # Segoe UI Variable Windows 11'in metin yüzü; Windows 10'da yok.
-        return "Segoe UI Variable Text"
+        # Segoe UI Variable Windows 11'in metin yüzü; Linux'ta yok.
+        return isletim.yazi_tipi()
 
     @property
     def font_display(self) -> str:
-        return "Segoe UI Variable Display"
+        # Ayrı bir başlık yüzü Windows'a özgü; Linux'ta gövdeyle aynı yüz
+        # kullanılıyor (başlık yine kalın ve büyük, tip rampası korunuyor).
+        return isletim.yazi_tipi()
 
     @property
     def font_mono(self) -> str:
-        return "Cascadia Mono"
+        return isletim.mono_yazi_tipi()
 
 
 def tokens() -> Tokens:
@@ -257,7 +318,7 @@ QLabel[role="subtitle"] {{
     font-size: 20px; font-weight: 600;
 }}
 QLabel[role="critical"] {{ font-size: 12px; color: {t.critical}; }}
-QLabel[role="mono"] {{ font-family: "{t.font_mono}", Consolas; font-size: 12px; }}
+QLabel[role="mono"] {{ font-family: "{t.font_mono}", Consolas, monospace; font-size: 12px; }}
 
 QPushButton {{
     background: {t.control};

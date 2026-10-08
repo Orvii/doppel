@@ -2637,6 +2637,16 @@ class TestIdeGorunumu:
     def test_ortak_klasor_farkli_surucude_patlamiyor(self):
         # `commonpath` farklı sürücülerde ValueError atıyor; panel bu
         # yüzden hiç açılmamamalı değil.
+        #
+        # Sürücü harfi Windows'a özgü: POSIX'te `C:\a\x.py` diye bir şey
+        # yok ve `Path` onu sıradan bir göreli ad sayıyor. Bu yüzden
+        # kurgunun kendisi Windows'a bağlı.
+        import sys
+
+        import pytest
+
+        if sys.platform != "win32":
+            pytest.skip("drive letters only exist on Windows")
         import doppel as ajan
         assert ajan._ortak_klasor([r"C:\a\x.py", r"D:\b\y.py"]).startswith("C:")
 

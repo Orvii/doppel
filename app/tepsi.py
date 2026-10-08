@@ -29,7 +29,7 @@ from PySide6.QtCore import QObject, QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPixmap
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from . import baslangic
+from . import baslangic, isletim
 from .fluent import Tokens
 
 #: Simgenin üretildiği boyutlar. Windows tepsiyi ölçek ayarına göre
@@ -197,9 +197,14 @@ class Tepsi(QObject):
         cubuk = menu.addAction("Show the command bar")
         cubuk.triggered.connect(self.cubuk_istendi.emit)
         menu.addSeparator()
-        self._baslangic = menu.addAction("Start with Windows")
+        # Etiket platformun kendi cümlesi (Windows'ta "Start with
+        # Windows", Linux'ta "Start at login") ama eylem aynı.
+        self._baslangic = menu.addAction(isletim.acilis_etiketi())
         self._baslangic.setCheckable(True)
-        self._baslangic.setToolTip("Runs Doppel when you sign in")
+        self._baslangic.setToolTip(
+            "Runs Doppel when you sign in"
+            if isletim.WINDOWS else "Starts Doppel at login"
+        )
         self._baslangic.toggled.connect(self._baslangic_degisti)
         # Kutu menü her açıldığında gerçeğe göre tazeleniyor: kayıt
         # defterini başka bir şey değiştirmiş olabilir ve bayat bir
