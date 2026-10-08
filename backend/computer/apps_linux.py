@@ -219,13 +219,21 @@ def katalog(refresh: bool = False) -> list[App]:
         except OSError:
             continue
         for yol in yollar:
+            # Çift ayıklama masaüstü standardındaki gibi **dosya kimliğiyle**
+            # (dizine göre relatif yol), adla değil: aynı `chrome.desktop`u
+            # iki dizinde iki farklı `Name` ile yazan bir dağıtımda ada göre
+            # ayıklamak ikisini birden gösterirdi.
+            try:
+                kimlik = yol.relative_to(dizin).as_posix()
+            except ValueError:  # pragma: no cover - rglob her zaman içeride
+                kimlik = yol.name
+            if kimlik in gorulen:
+                continue
             app = girdiden_app(yol)
             if app is None:
                 continue
-            anahtar = normalise(app.name)
-            if anahtar and anahtar not in gorulen:
-                gorulen.add(anahtar)
-                bulunan.append(app)
+            gorulen.add(kimlik)
+            bulunan.append(app)
     bulunan.sort(key=lambda a: a.name.lower())
     _cache = (time.monotonic(), bulunan)
     return bulunan

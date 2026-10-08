@@ -245,6 +245,19 @@ def foreground_title() -> str:
     return baslik_ayristir(sonuc.cikti)
 
 
+def _proc_comm(pid: int) -> str:
+    """`/proc/<pid>/comm` — süreç adı; okunamazsa boş dize.
+
+    Süreç bu arada ölmüş olabilir (`_NET_WM_PID` bayat); o durumda
+    "bilinmiyor" demek doğru, uydurmak değil.
+    """
+    try:
+        with open(f"/proc/{pid}/comm", encoding="utf-8") as dosya:
+            return dosya.read().strip()
+    except OSError:
+        return ""
+
+
 def foreground_process() -> str:
     """Ön plandaki pencerenin süreç adı, örn. `firefox`.
 
@@ -260,11 +273,7 @@ def foreground_process() -> str:
     pid = pid_ayristir(sonuc.cikti)
     if pid is None:
         return ""
-    try:
-        with open(f"/proc/{pid}/comm", encoding="utf-8") as dosya:
-            return dosya.read().strip()
-    except OSError:
-        return ""
+    return _proc_comm(pid)
 
 
 def find_window(title_contains: str) -> int:
