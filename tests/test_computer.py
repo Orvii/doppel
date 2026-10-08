@@ -825,18 +825,20 @@ class TestTerminalLinux:
             assert t.arka_uc_sinifi() is t._PtyArkaUcu
 
     def test_ithalat_koruma_yayilari_dogru(self):
-        # Dikilen kural: Windows yolu pywinpty'yi, Linux yolu
-        # fcntl/termios'u koşullu ithal ediyor; biri diğerinin platformda
-        # modülü kırıyor olamaz. Bu test iki platformda da koşar.
+        # Dikilen kural: adlar her platformda VAR, yokluk `None` ile
+        # temsil edilir — ne modül içe aktarımı patlar ne de erişim
+        # AttributeError'a düşer. Eski tasarım adı hiç tanımlamıyordu;
+        # simülasyon yüzeyi (winpty engelli, os.name hâlâ "nt") o yüzden
+        # içe aktarmada patlıyordu. Bu test iki platformda da koşar.
         import os
         from backend.computer import terminal as t
         if os.name == "nt":
             assert t.winpty is not None
-            assert not hasattr(t, "fcntl")
-            assert not hasattr(t, "termios")
+            assert t.fcntl is None
+            assert t.termios is None
         else:
             assert t.winpty is None
-            assert hasattr(t, "fcntl") and hasattr(t, "termios")
+            assert t.fcntl is not None and t.termios is not None
 
     def test_winpty_arka_ucu_spawn_argumanlari_aynen_gecirir(self):
         from backend.computer import terminal as t

@@ -84,6 +84,13 @@ _MODELLER = [
     "backend.computer.canli",
     "backend.computer.terminal",
     "backend.safety.killswitch",
+    # Portal sürücüleri (port/wayland): dbus_next yalnızca çalışma
+    # zamanında, tembel içe aktarılır — bu yüzeyde de patlamamalı.
+    "backend.computer.portal_tasiyici",
+    "backend.computer.portal_oturum",
+    "backend.computer.portal_girdi",
+    "backend.computer.portal_ekran",
+    "backend.computer.portal_surucu",
 ]
 
 sonuc = {"ok": [], "hata": {}}
@@ -150,7 +157,7 @@ class TestLinuxIceAktarma:
             "Linux'ta içe aktarılamayan modüller: "
             + ", ".join(f"{k} ({v})" for k, v in sonuc["hata"].items())
         )
-        assert len(eksik) == 13, f"beklenen 13 modül, içe aktarılan {len(eksik)}"
+        assert len(eksik) == 18, f"beklenen 18 modül, içe aktarılan {len(eksik)}"
 
     def test_oturum_x11_gorunur(self, sonuc):
         assert sonuc["oturum"] == "x11"

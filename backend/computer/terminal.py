@@ -54,13 +54,22 @@ from typing import Callable, Mapping, Protocol
 
 import pyte
 
-if os.name == "nt":  # pragma: no cover - platforma bağlı dal
+# Platforma bağlı adlar toleranslı içe aktarılır: modül her yüzeyde
+# içe aktarılabilir kalır, eksiklik çağrı anında açık hataya döner.
+# Sıkı `if os.name` bloğu, Linux simülasyon yüzeyinde (winpty engelli ama
+# os.name hâlâ "nt") içe aktarmayı patlatıyordu; arka uç seçimi zaten
+# `erisim` kararına bağlı, bu yüzden burada dallanma yok.
+try:  # pragma: no cover - platforma bağlı varlık
     import winpty
-else:                # pragma: no cover - platforma bağlı dal
+except ImportError:  # pywinpty yalnızca Windows'ta; Linux'ta yok ve olmaz
+    winpty = None  # type: ignore[assignment]
+
+try:  # pragma: no cover - platforma bağlı varlık
     import fcntl
     import termios
-
-    winpty = None  # pywinpty yalnızca Windows'ta var; adı yoksa çağrı da yok
+except ImportError:  # Windows'ta fcntl/termios yok
+    fcntl = None  # type: ignore[assignment]
+    termios = None  # type: ignore[assignment]
 
 DEFAULT_COLS = 120
 DEFAULT_ROWS = 40
@@ -326,6 +335,14 @@ class _PtyArkaUcu:
                 f"could not start {argv[0]!r}: not found on PATH")
         if cwd and not os.path.isdir(cwd):
             raise TerminalError(f"working directory does not exist: {cwd}")
+        # Platform guard'ı fork'un hemen öncesinde: argv/cwd doğrulaması
+        # saf mantık ve her platformda koşar (testler bunu Windows'ta
+        # pinliyor); pty ailesinin yokluğu yalnızca fork anında önemli.
+        if fcntl is None or termios is None or not hasattr(os, "forkpty"):
+            # Windows'ta stdlib pty ailesi yok; seçim yanlış olduysa
+            # AttributeError yerine ne olduğunu söyleyen hata.
+            raise TerminalError(
+                "stdlib pty is not available on this platform")
         try:
             pid, master = os.forkpty()
         except OSError as exc:
@@ -433,10 +450,21 @@ class _PtyArkaUcu:
 
 
 def arka_uc_sinifi():
-    """Platform seçimi: tek yer. Başka hiçbir yerde platform `if`i yok."""
-    if os.name == "nt":
-        return _WinptyArkaUcu
-    return _PtyArkaUcu
+    """Platform seçimi: tek yer. Başka hiçbir yerde platform `if`i yok.
+
+    Karar `erisim`'e soruluyor — platform sorusunu projede o modül sorar.
+    `os.name` yedeği yalnızca `erisim` içe aktarılamazsa (beklenmez) devreye
+    girer; asıl kaynak oturum türüdür, çünkü bu modül PTY'yi o türden
+    bağımsız açıyor ve seçimi yalnızca "bu makinede pywinpty var mı"
+    sorusu belirler.
+    """
+    try:
+        from . import erisim
+
+        pencere_mi = erisim.oturum().tur == "windows"
+    except Exception:  # pragma: no cover - erisim varken olmaz
+        pencere_mi = os.name == "nt"
+    return _WinptyArkaUcu if pencere_mi else _PtyArkaUcu
 
 
 # --- Oturum --------------------------------------------------------------
