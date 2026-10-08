@@ -5,6 +5,11 @@ bir X ekranı (`Xvfb`/`Xephyr`). İkisi de birer "yan masa" ve dışarıdan
 bakan için tek bir ajan var; o yüzden pencere kaydı, hata türü ve yan
 masanın orada olduğunun işareti tek yerde duruyor.
 
+Arka uç seçimi de burada: `yan_masa_kur`. Kararı `erisim.masa_sec`
+veriyor (platform dallanması yalnızca orada yaşar); buradaki fabrika
+kararı somut sınıfa çeviriyor ve içe aktarmaları tembel tutuyor —
+Linux'ta Win32 modülünün kurulmasına gerek yok.
+
 ## Gösterge kaydı neden var
 
 `mesaj.py` ve `kayit.py` çağıranları masaüstünü hiç bilmiyor: girdi
@@ -126,3 +131,34 @@ def yan_ortam(gosterge: str, temel: Mapping[str, str] | None = None) -> dict[str
     ortam["DISPLAY"] = gosterge
     ortam.pop("WAYLAND_DISPLAY", None)
     return ortam
+
+
+# --- arka uç seçimi -----------------------------------------------------
+
+#: Ajanın yan masaüstünün adı (Windows'ta `CreateDesktopW` adı).
+YAN_AD = "ajan-calisma"
+
+
+def _masaustu_sinifi():
+    """Windows arka ucu. Yalnızca gerçekten Windows'ta içe aktarılır."""
+    from .masaustu import Calisma
+
+    return Calisma
+
+
+def _yan_sinifi():
+    """X11 arka ucu — her Linux'ta, oturum türünden bağımsız."""
+    from .masaustu_x11 import Calisma as YanCalisma
+
+    return YanCalisma
+
+
+def yan_masa_kur(ortam: Mapping[str, str] | None = None) -> object:
+    """Yan masa arka ucunu seçip kurar. `Calisma` sözleşmesi: `ac` +
+    `kapat` + `pencereler` + `yakala` + `baslat`."""
+    from . import erisim
+
+    secim = erisim.masa_sec(ortam)
+    if secim.ad == "win32":
+        return _masaustu_sinifi()(YAN_AD)
+    return _yan_sinifi()(YAN_AD)

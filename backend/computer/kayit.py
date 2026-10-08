@@ -59,18 +59,50 @@ stdin'e `q` yazıp bekliyor, öldürmek yalnızca son çare.
   etmiyor ve ffmpeg orada başlamadan ölüyor. Pencere boyutu keyfî.
 - **stderr borusu boşaltılıyor.** Boşaltılmazsa boru dolduğunda ffmpeg
   yazma sırasında bloke oluyor ve kayıt sessizce donuyor.
+
+## X11 dalı: `-f x11grab`, ve neden pencere yok
+
+Yan masa Linux'ta ayrı bir X ekranı (`masaustu_x11`). Kayıt da o ekranı
+çekiyor: `ffmpeg -f x11grab -i <:n>` — gdigrab'ın karşılığı ve x11grab
+**çağıranın `DISPLAY`ine** değil, açıkça verilen ekrana bağlanıyor, yani
+yan ekranı çekmek için `subprocess` yeterli (Windows'taki `CreateProcessW`
+zorunluluğu yok).
+
+**Kayıt bütün yan ekranı çekiyor, tek pencereyi değil.** Windows'ta
+pencere başına kayıt zorunluydu çünkü etkin olmayan masaüstünün ekran
+yüzeyi yoktu; Xvfb'de böyle bir kısıt yok ve masaüstünün tamamı
+çekilebiliyor. Bu daha doğru: ajan kayıt sürerken pencere değiştirirse
+video onu da gösteriyor. `record_start`ın `hwnd`i yine de kaydediliyor —
+kaydın *neyin hakkında* olduğunu taşıyor — ama kareyi daraltmıyor.
+
+**`-draw_mouse` YOK (varsayılan açık).** Windows'ta sistemin oku yan
+masaüstünde donuyordu ve onu çekmek "takıldı mı" dedirtiyordu; burada
+imleç ajanın kendi X işaretçisi ve konumu gerçekten ajanın son tıkladığı
+yer — kayıtta görünmesi bilgi, gürültü değil.
+
+**Bayrak biçimi (doğrulanmamış).** `-video_size WxH` ve `-i :n` kullanımı
+ffmpeg'in yaygın x11grab dokümantasyonuyla uyumlu; burada **çalıştırılarak
+doğrulanmadı** (Linux koşusu CI'da). Argv saf bir fonksiyon, testi
+sözleşmeyi kilitliyor: eksik bir bayrak ekranda fark edilmeden yanlış bir
+video üretirdi. Farklı bir sürümde biçim değişirse düzeltilecek tek yer
+`ffmpeg_komutu_x11`.
 """
 
 from __future__ import annotations
 
 import ctypes
+import os
+import shlex
 import shutil
+import subprocess
+import sys
 import threading
 import time
 from pathlib import Path
 
 from ..config import REPO_ROOT
 from .masaustu import _PROCESS_INFORMATION, _STARTUPINFOW
+from .masaustu_ortak import YAN_AD, aktif_gosterge
 from .win32_kabuk import WinDLL, wintypes
 
 _k32 = WinDLL("kernel32", use_last_error=True)
@@ -125,13 +157,19 @@ def ffmpeg_yolu() -> str:
     """ffmpeg'in tam yolu. Yoksa **açık** bir hata.
 
     Sessizce geçmiyor: kayıt yapılmadığını koşunun sonunda video dosyası
-    aramaya kalkınca öğrenmek, hiç kayıt yapmamaktan daha kötü.
+    aramaya kalkınca öğrenmek, hiç kayıt yapmamaktan daha kötü. Kurulum
+    önerisi platforma göre: kullanıcıya yanlış paket yöneticisini
+    söylemek, hiç söylememekten iyi değil.
     """
     yol = shutil.which("ffmpeg")
     if not yol:
         raise KayitHatasi(
             "ffmpeg was not found on PATH, so nothing can be recorded. "
             "Install it (winget install Gyan.FFmpeg) and restart the app."
+            if sys.platform == "win32" else
+            "ffmpeg was not found on PATH, so nothing can be recorded. "
+            "Install it (apt install ffmpeg, or your distro's ffmpeg "
+            "package) and restart the app."
         )
     return yol
 
@@ -170,6 +208,131 @@ def ffmpeg_komutu(hedef: Path, hwnd: int, kare_hizi: int = KARE_HIZI,
         " -movflags +faststart"
         f' "{hedef}"'
     )
+
+
+def ffmpeg_komutu_x11(hedef: Path, gosterge: str, ekran: tuple[int, int] = (1920, 1080),
+                      kare_hizi: int = KARE_HIZI,
+                      ffmpeg: str | None = None) -> str:
+    """x11grab komutunu kurar: yan ekranın tamamı.
+
+    Biçim notu ve neden pencere değil: modül başlığı, "X11 dalı".
+    Çift sayıya kırpma burada da var — yuv420p tek sayı kabul etmiyor;
+    `-video_size` kullanıldığında x11grab kırpmayı ffmpeg'in `crop`
+    süzgecine bırakıyor, aynı ifade.
+
+    `ekran` fiziksel boyut. Kayıt komutu da pencereler gibi **yan
+    ekranla** konuşuyor; ölçü çağrı anında `Calisma`nın göstergesinden
+    geliyor (varsayılan Xvfb ölçüsü).
+    """
+    en, boy = int(ekran[0]), int(ekran[1])
+    return (
+        f'"{ffmpeg or ffmpeg_yolu()}"'
+        " -hide_banner -loglevel error -y"
+        f" -f x11grab -framerate {kare_hizi}"
+        f" -video_size {en}x{boy} -i {gosterge}"
+        ' -vf "crop=trunc(iw/2)*2:trunc(ih/2)*2"'
+        " -c:v libx264 -preset veryfast -crf 26 -pix_fmt yuv420p"
+        " -movflags +faststart"
+        f' "{hedef}"'
+    )
+
+
+def dogur_x11(komut_metni: str, gosterge: str) -> "_SurecX11":
+    """Yan ekranda x11grab ffmpeg'ini doğurur. `DISPLAY` miras değil, açık.
+
+    `-i :n` yeterli olurdu ama ortam da yan ekrana kilitleniyor: ffmpeg'in
+    başka bir yolu (ör. bir protokol yardımcı süreci) ortamdaki `DISPLAY`i
+    okuyabilir ve yanlış ekrana bağlanırdı. `WAYLAND_DISPLAY` silinmesi
+    `masaustu_ortak`taki kuralın aynısı.
+    """
+    cevre = dict(os.environ)
+    cevre["DISPLAY"] = gosterge
+    cevre.pop("WAYLAND_DISPLAY", None)
+    try:
+        surec = subprocess.Popen(
+            shlex.split(komut_metni),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=cevre,
+            cwd=str(REPO_ROOT),
+        )
+    except OSError as exc:
+        raise KayitHatasi(f"could not start ffmpeg: {exc}") from None
+    return _SurecX11(surec)
+
+
+class _SurecX11:
+    """X11 ffmpeg süreci. `_Surec` (Windows) ile aynı yüzey.
+
+    Durdurma yolu `q`: ffmpeg stdin'e `q` gelince başlığı (moov) yazıp
+    temiz çıkıyor. `wait` / `terminate` / `kill`, `subprocess.Popen`un
+    birebir arayüzü — testin sahtesi de bu yüzeyi taklit ediyor.
+    """
+
+    def __init__(self, surec: subprocess.Popen) -> None:
+        self._surec = surec
+        self.pid = surec.pid
+        self._gunluk: list[str] = []
+        self._okuyucu = threading.Thread(
+            target=self._stderr_bosalt, daemon=True, name="ffmpeg-x11-stderr")
+        self._okuyucu.start()
+
+    def _stderr_bosalt(self) -> None:
+        akis = self._surec.stderr
+        if akis is None:
+            return
+        try:
+            for ham in iter(lambda: akis.read(4096), b""):
+                self._gunluk.append(ham.decode("utf-8", "replace"))
+        except Exception:
+            pass
+        finally:
+            akis.close()
+
+    @property
+    def gunluk(self) -> str:
+        return "".join(self._gunluk).strip()
+
+    def dur_iste(self) -> None:
+        """stdin'e `q`. ffmpeg bunu görünce başlığı yazıp temiz çıkıyor."""
+        akis = self._surec.stdin
+        if akis is None:
+            return
+        try:
+            akis.write(b"q")
+            akis.flush()
+        except (BrokenPipeError, OSError):
+            # ffmpeg zaten ölmüş olabilir; `bekle` kararı verir.
+            pass
+        try:
+            akis.close()
+        except OSError:
+            pass
+        self._surec.stdin = None
+
+    def bekle(self, saniye: float) -> bool:
+        """Süreç bitene kadar bekler. Bittiyse `True`."""
+        try:
+            self._surec.wait(timeout=saniye)
+            return True
+        except subprocess.TimeoutExpired:
+            return False
+
+    def oldur(self) -> None:
+        self._surec.kill()
+        try:
+            self._surec.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            pass
+
+    def kapat(self) -> None:
+        if self._surec.stdin:
+            try:
+                self._surec.stdin.close()
+            except OSError:
+                pass
+            self._surec.stdin = None
 
 
 def _startupinfo(masaustu: str, stdin=None, stdout=None,
@@ -300,21 +463,31 @@ def dogur(komut: str, masaustu: str) -> _Surec:
 
 
 class EkranKaydi:
-    """Yan masaüstünün ekran kaydı. Aynı anda tek kayıt.
+    """Yan masanın ekran kaydı. Aynı anda tek kayıt.
 
     İkinci bir kayıt reddediliyor, sessizce ilkinin üstüne yazılmıyor:
     aynı ekranı iki ffmpeg çekerse ikisi de kare düşürüyor ve hangisinin
     hangi dosyayı yazdığı belirsiz kalıyor.
+
+    Arka uç **çağrı anında** seçiliyor: yan masa açıksa (`aktif_gosterge`)
+    X11 yolu, değilse Windows yolu. `EkranKaydi` dispatcher kurulurken,
+    yani yan masadan önce doğuyor — seçimi kurucuya gömmek, açılmayan
+    yan masaya kayıt başlatmak gibi sessiz bir hata üretirdi.
     """
 
-    def __init__(self, masaustu_adi: str = "ajan-calisma",
-                 dogurucu=dogur) -> None:
+    def __init__(self, masaustu_adi: str = YAN_AD,
+                 dogurucu=dogur, dogurucu_x11=dogur_x11,
+                 ekran=lambda: (1920, 1080)) -> None:
         self.masaustu_adi = masaustu_adi
         self._dogur = dogurucu
+        self._dogur_x11 = dogurucu_x11
+        self._ekran = ekran
         self._surec = None
         self._hedef: Path | None = None
         #: Kaydedilen pencere. Arayüz bunu gösteriyor: "kayıt var" ile
-        #: "neyin kaydı var" farklı sorular.
+        #: "neyin kaydı var" farklı sorular. X11'de kayıt ekranın tamamı
+        #: ama pencere kimliği yine tutuluyor — kaydın ne hakkında
+        #: olduğunu söyleyen tek işaret.
         self._hwnd = 0
         self._basladi = 0.0
         self._sure = 0.0
@@ -367,8 +540,13 @@ class EkranKaydi:
             except OSError as exc:
                 raise KayitHatasi(
                     f"could not create {hedef.parent}: {exc}") from None
-            komut = ffmpeg_komutu(hedef, hwnd)
-            surec = self._dogur(komut, self.masaustu_adi)
+            gosterge = aktif_gosterge()
+            if gosterge:
+                komut = ffmpeg_komutu_x11(hedef, gosterge, self._ekran())
+                surec = self._dogur_x11(komut, gosterge)
+            else:
+                komut = ffmpeg_komutu(hedef, hwnd)
+                surec = self._dogur(komut, self.masaustu_adi)
             if surec.bekle(ACILIS_SANIYE):
                 gunluk = surec.gunluk or "it exited immediately"
                 surec.kapat()

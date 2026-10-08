@@ -221,6 +221,20 @@ def girdi_sec(
     return GirdiSecimi(None, None, env, f"No input backend available: {ayrinti}")
 
 
+def masa_sec(ortam: Mapping[str, str] | None = None) -> GirdiSecimi:
+    """Yan masa arka ucunu seçer.
+
+    Windows: masaüstü nesnesi (`masaustu.Calisma`). Diğer her yerde:
+    ayrı bir X ekranı (`masaustu_x11.Calisma`, Xvfb/Xephyr). "Diğer her
+    yerde" bilinçli — yan masa Xvfb olduğu için **ana oturumun türü hiç
+    sorulmuyor**: makinede X11 de olsa Wayland de olsa hiç ekran da
+    olmasa yan ekran bizim ve X11.
+    """
+    if oturum(ortam).tur == "windows":
+        return GirdiSecimi("win32", None, {}, None)
+    return GirdiSecimi("x11", None, {}, None)
+
+
 def goruntu_sec(ortam: Mapping[str, str] | None = None) -> GirdiSecimi:
     """Ekran yakalama arka ucunu seçer. Wayland yolu port/wayland'in kaydı."""
     oturum_ = oturum(ortam)

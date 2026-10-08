@@ -534,6 +534,8 @@ and then quietly does nothing.
 backend/
   computer/     capture, input, displays, UIA, terminal, files, windows
   computer/masaustu.py, mesaj.py   the second desktop and its input
+  computer/masaustu_x11.py,        the same desk as an Xvfb/Xephyr display
+    ekran_x11.py, imlec.py         (Linux), and the cursor both draw
   computer/canli.py                the desk's live frame
   agent/        loop, dispatch, tools, prompts, audit log, claim check
   agent/akankod.py   decodes the file being written out of the model stream

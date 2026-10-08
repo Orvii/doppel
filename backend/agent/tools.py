@@ -643,9 +643,9 @@ SIDE_LAUNCH = {
         "Launches an app IN THE SIDE WORKSPACE — on an invisible desktop. "
         "Nothing opens on the user's screen and their cursor and focus "
         "never move, so they can keep working while you do. Prefer it for "
-        "long-running browser jobs. Limit: Microsoft Store apps (including "
-        "Windows 11's Notepad) open no window here; classic .exe files and "
-        "Chrome work."
+        "long-running browser jobs. On Windows only: Microsoft Store apps "
+        "(including Windows 11's Notepad) open no window here; classic "
+        ".exe files and Chrome work."
     ),
     "input_schema": {
         "type": "object",
@@ -695,8 +695,8 @@ SIDE_ACT = {
     "description": (
         "Clicks, types, presses a key or scrolls in the side workspace. The "
         "agent's own cursor is used; the user's mouse does not move. "
-        "Modifier combinations (like Ctrl+S) DO NOT WORK HERE — click the "
-        "menu instead."
+        "WINDOWS ONLY: modifier combinations (like Ctrl+S) do not work — "
+        "click the menu instead. On Linux they work fine."
     ),
     "input_schema": {
         "type": "object",
@@ -743,10 +743,9 @@ RECORD_START = {
         "Use it when the user asks for a video or a recording of what you "
         "do, or wants something they can share afterwards — a screenshot "
         "shows where you ended up, a video shows how you got there. "
-        "It records ONE window: the one you name, or the last one you "
-        "touched. Windows only draws the desktop that has the keyboard, "
-        "so the whole side desk cannot be captured — if the job moves to "
-        "another window, stop and start again. "
+        "It records the side desk (on Windows, the one window you name; "
+        "on Linux the whole side screen, so moving between windows is "
+        "fine). "
         "Always call record_stop when you are done; a recording left "
         "running is stopped when the turn ends and the video ends there."
     ),

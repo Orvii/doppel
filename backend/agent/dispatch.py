@@ -27,7 +27,7 @@ from ..computer import windows as win
 from ..computer.capture import ScreenCapture
 from ..computer.displays import DisplayMap, model_noktasini_buyut
 from ..computer.kayit import EkranKaydi, KayitHatasi
-from ..computer.masaustu import Calisma, MasaustuHatasi, pencere_bilgisi
+from ..computer.masaustu import MasaustuHatasi, pencere_bilgisi
 from ..computer.mesaj import DesteklenmiyorHatasi, Girdi
 from ..computer.terminal import TerminalError, TerminalRegistry
 from ..office.sheet import SheetError, Workbook
@@ -123,8 +123,10 @@ class Dispatcher:
         self.buttons = ShortcutStore()
         self.remote: SshSession | None = None
         #: Yan çalışma alanı — ilk kullanımda açılıyor. Masaüstü nesnesi
-        #: ucuz değil ve ajanların çoğu oturumu ona hiç dokunmadan bitiyor.
-        self.side: Calisma | None = None
+        #: (Windows) ya da X sunucusu (X11) ucuz değil ve ajanların çoğu
+        #: oturumu ona hiç dokunmadan bitiyor. Tür arka uca göre değişiyor
+        #: (`yan_masa_kur` seçiyor), o yüzden burada tek bir sınıf yok.
+        self.side = None
         self.side_input = Girdi()
         #: Ajanın en son dokunduğu yan pencere. Canlı görüntü bunu
         #: işaretliyor: bakan kişinin ilk sorusu "şu an nerede".
@@ -616,9 +618,18 @@ class Dispatcher:
 
     # --- yan çalışma alanı ------------------------------------------------
 
-    def _side(self) -> Calisma:
+    def _side(self):
+        """Yan masayı (gerekirse) açar ve döndürür.
+
+        Arka uç seçimi `masaustu_ortak.yan_masa_kur` içinde; karar
+        `erisim.masa_sec`te. Windows'ta masaüstü nesnesi, Linux'ta
+        Xvfb/Xephyr yan ekranı — ikisi de aynı yüzeyi veriyor
+        (`ac/pencereler/yakala/baslat/kapat`).
+        """
         if self.side is None:
-            self.side = Calisma()
+            from ..computer.masaustu_ortak import yan_masa_kur
+
+            self.side = yan_masa_kur()
             self.side.ac()
         return self.side
 
@@ -640,6 +651,14 @@ class Dispatcher:
                 "with side_windows."
             )
         self.last_side_hwnd = hwnd
+        # Pencere bilgisi **yan masadan** okunuyor: X11'de hedef ekran
+        # çağrı anında kayıttan geliyor (`Calisma.pencere_bilgisi`),
+        # Windows'ta metot modül fonksiyonuna devrediyor. Metodu olmayan
+        # bir arka uç (test sahteleri) modül fonksiyonuna düşüyor —
+        # monkeypatch edilebilir yüzey bu.
+        metot = getattr(self.side, "pencere_bilgisi", None)
+        if metot is not None:
+            return metot(hwnd)
         return pencere_bilgisi(hwnd)
 
     def _do_side_launch(self, payload: dict[str, Any]) -> ToolOutcome:
@@ -658,7 +677,8 @@ class Dispatcher:
         if not pencereler:
             return ToolOutcome(
                 content="No windows in the side desk. If you just launched one, wait "
-                "a second or two; Store apps never open a window here."
+                "a second or two; some apps take a while, and a few never open a "
+                "window at all."
             )
         satirlar = [
             f"{p.hwnd}  {p.en}x{p.boy}  [{p.sinif}]  {p.baslik or '(untitled)'}"
@@ -765,7 +785,10 @@ class Dispatcher:
             )
         try:
             hedef = self.ekran_kaydi.basla(hwnd=int(hwnd))
-        except KayitHatasi as exc:
+        except (KayitHatasi, OSError) as exc:
+            # OSError de yakalanıyor: X11 dalında ffmpeg'in kendisi
+            # doğuramamak (`Popen` hatası) ihtimal dâhilinde ve modele
+            # "beklenmeyen hata" diye dönmesi, sebebini gizlerdi.
             raise ToolError(str(exc)) from None
         self.last_side_hwnd = int(hwnd)
         return ToolOutcome(

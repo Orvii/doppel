@@ -68,13 +68,8 @@ look with `side_capture`, click and type with `side_act`, and close with
 `side_close` when you are done. Coordinates are relative to the window's
 top-left corner.
 
-Know the three limits, or you will waste turns:
-
-- **Store apps open no window there** — including Windows 11's Notepad.
-  Classic `.exe` files and Chrome work.
-- **Modifier combinations do not work.** You cannot send `Ctrl+S`; click
-  the menu instead. Plain keys (`enter`, `tab`, `f5`) work.
-- **No drag-and-drop.**
+Know the limits, or you will waste turns:
+{yan_sinirlar}
 
 Anything the user has to see with their own eyes — a confirmation, a result
 screen — belongs on the real desktop. The side workspace is visible but in
@@ -377,6 +372,35 @@ swallowing bad news.
 """
 
 
+#: Yan masanın platforma bağlı sınırları. Promptun geri kalanı iki
+#: platformda da doğru; değişen tek şey bu paragraf. Ayrı bir parça
+#: olması, "Windows'ta geçerli bir cümle Linux'ta yalan olmasın" kuralının
+#: tek bakışta görünmesi için — iki metin iç içe geçseydi bir gün biri
+#: diğerinin içinde kalırdı.
+YAN_SINIRLAR_WIN = """
+- **Store apps open no window there** — including Windows 11's Notepad.
+  Classic `.exe` files and Chrome work.
+- **Modifier combinations do not work.** You cannot send `Ctrl+S`; click
+  the menu instead. Plain keys (`enter`, `tab`, `f5`) work.
+- **No drag-and-drop.**
+"""
+
+YAN_SINIRLAR_LINUX = """
+- **Modifier combinations work.** There is no posted-message limit here:
+  `side_act`'s `key` action sends real presses, so `ctrl+s`, `ctrl+l` and
+  friends are fine. Type into the focused window; the agent's own cursor
+  is where you last clicked.
+- **No drag-and-drop.**
+"""
+
+
+def yan_sinirlar() -> str:
+    """Platforma göre yan masa sınır paragrafı."""
+    import sys
+
+    return YAN_SINIRLAR_WIN if sys.platform == "win32" else YAN_SINIRLAR_LINUX
+
+
 def build_system(displays: DisplayMap, active_index: int,
                  kuru: bool = False) -> str:
     """Sistem promptunu kurar.
@@ -392,6 +416,7 @@ def build_system(displays: DisplayMap, active_index: int,
         SYSTEM
         .replace("{displays}", displays.describe())
         .replace("{active}", str(active_index))
+        .replace("{yan_sinirlar}", yan_sinirlar())
     )
     # Kuru koşu bölümü **sona** ekleniyor: prompt önbelleğe alınıyor ve
     # ortasına bir blok sokmak, kuru koşu her açılıp kapandığında

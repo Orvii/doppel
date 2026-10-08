@@ -91,16 +91,23 @@ def masayi_oku(calisma: Calisma | None, girdi=None, alan=(1920, 1080),
     except Exception:
         return MasaKaresi(alan=alan)
 
+    # Arka ucun kendi okuma metotları tercih ediliyor: X11'de
+    # `istemci_kutusu` (0,0,en,boy) ve pencere bilgisi hedef ekranı
+    # bilmek zorunda (çağrı `DISPLAY=:n` ile gidiyor); Windows'ta
+    # metotlar modül fonksiyonlarına devrediyor, davranış aynı.
+    kutu_oku = getattr(calisma, "istemci_kutusu", None) or istemci_kutusu
+    bilgi_oku = getattr(calisma, "pencere_bilgisi", None) or pencere_bilgisi
+
     kareler: list[PencereKaresi] = []
     # `EnumDesktopWindows` üstten alta veriyor; çizim alttan üste olacak.
     for p in reversed(pencereler[:sinir]):
         try:
-            dx, dy, en, boy = istemci_kutusu(p.hwnd)
+            dx, dy, en, boy = kutu_oku(p.hwnd)
             if en <= 0 or boy <= 0:
                 continue
             kare = calisma.yakala(p.hwnd)
             gorsel = kare.image.crop((dx, dy, dx + en, dy + boy))
-            taze = pencere_bilgisi(p.hwnd)
+            taze = bilgi_oku(p.hwnd)
             kareler.append(PencereKaresi(
                 hwnd=p.hwnd, baslik=taze.baslik, sinif=taze.sinif,
                 x=taze.x + dx, y=taze.y + dy, en=en, boy=boy,
