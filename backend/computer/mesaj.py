@@ -37,10 +37,11 @@ from __future__ import annotations
 import ctypes
 import time
 from collections import deque
-from ctypes import wintypes
 from dataclasses import dataclass
 
-_u32 = ctypes.WinDLL("user32", use_last_error=True)
+from .win32_kabuk import WinDLL, wintypes
+
+_u32 = WinDLL("user32", use_last_error=True)
 
 WM_MOUSEMOVE = 0x0200
 WM_LBUTTONDOWN, WM_LBUTTONUP = 0x0201, 0x0202

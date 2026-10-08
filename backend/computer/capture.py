@@ -17,6 +17,22 @@ tercih edilen ikincisi, yani bu düzeltilmeden o ekranda ajan hiç
 `zoom` aksiyonu aynı kaynaktan bölge kırpıyor — yeniden yakalama değil, çünkü
 model kırpmayı istediğinde baktığı kare o an ekranda olan kare olmayabilir.
 Kırpma da model uzayında: bölge, modelin gördüğü kareden seçiliyor.
+
+## Port notu — yakalama yetenek kapısının arkasında
+
+`mss` burada **X11 yoludur** (ve Windows). Wayland'de mss/XTEST ailesi
+sessizce yarım çalışır: kare gelir ama portalın izin verdiği içerikle
+sınırlıdır ve bu sınır sessizdir. Bu yüzden `ScreenCapture` kurulurken
+`erisim.goruntu_sec()` sorulur; seçim `mss` değilse kayıtlı arka uca
+devredilir (portal arka ucu `erisim.surucu_kaydet(..., tur="goruntu")` ile
+girer; klasördeki portal dosyaları port/wayland'e ait). Seçim yoksa
+`ScreenCapture` anlaşılır bir hatayla kurulmaz — import hiçbir koşulda
+patlamaz.
+
+Kayıtlı arka ucun sözleşmesi (port/wayland için):
+`__init__(env: dict | None)`, `grab(display: Display) -> PIL.Image.Image`
+(ham fiziksel piksel; `Frame` kurulumu — küçültme kararı — burada,
+`Frame.from_capture`'ta kalır), isteğe bağlı `close()`.
 """
 
 from __future__ import annotations
@@ -28,6 +44,7 @@ from dataclasses import dataclass
 import mss
 from PIL import Image
 
+from . import erisim
 from .displays import Display, DisplayMap, model_kare_boyutu
 
 
@@ -143,9 +160,20 @@ class ScreenCapture:
 
     def __init__(self, displays: DisplayMap) -> None:
         self._displays = displays
-        self._local = threading.local()
-        self._lock = threading.Lock()
-        self._sessions: list = []
+        self._secim = erisim.goruntu_sec()
+        if self._secim.hata:
+            # Kurulum anında söylenir: çağrı anında her karede patlamak,
+            # kullanıcının neden ekran görmediğini bilmemesi demek olurdu.
+            raise RuntimeError(self._secim.hata)
+        self._arka: object | None = None
+        if self._secim.ad in ("win32", "mss"):
+            self._local = threading.local()
+            self._lock = threading.Lock()
+            self._sessions: list = []
+        else:
+            # Kayıtlı arka uç (ör. XDG portal). Sözleşme: grab(Display) ->
+            # PIL.Image; Frame kurulumu ve küçültme kararı burada kalır.
+            self._arka = self._secim.sinif(self._secim.env)
 
     @property
     def _sct(self):
@@ -158,6 +186,14 @@ class ScreenCapture:
         return session
 
     def close(self) -> None:
+        if self._arka is not None:
+            kapat = getattr(self._arka, "close", None)
+            if kapat is not None:
+                try:
+                    kapat()
+                except Exception:
+                    pass
+            return
         with self._lock:
             sessions, self._sessions = self._sessions, []
         for session in sessions:
@@ -177,6 +213,9 @@ class ScreenCapture:
 
     def grab(self, display: Display | int) -> Frame:
         target = self._displays[display] if isinstance(display, int) else display
+        if self._arka is not None:
+            image = self._arka.grab(target)
+            return Frame.from_capture(target.index, image)
         raw = self._sct.grab(
             {
                 "left": target.left,

@@ -32,12 +32,24 @@ Sanal masaüstünün tamamını (3840x1080) tek kare olarak göndermek yine iyi
 bir fikir değil: 5382 token ediyor, küçültme giriyor. Monitör başına
 yakalayınca 1920x1080 iki sınırın da altında kalıyor ve bu makinede ölçek
 tam olarak 1 — koordinatlar 1:1.
+
+## Port notu
+
+Ölçek matematiği ve veri modeli platformdan bağımsız; burada değişen tek
+şey envanterin **nereden** okunduğu. Sınır `enumerate_displays`'te:
+Windows'ta ctypes/MONITORINFO (aşağıda, çağrı anında çözülür — Linux'ta
+`ctypes.windll` içe aktarma anında görülmez), Linux'ta `xrandr`
+ayrıştırıcıları (`goruntu_x11.py`). Koordinat sözleşmesi ikisinde de aynı:
+sanal masaüstü sol-üstü negatif olabilir ve model uzayı monitör başına
+sıfırdan başlar.
 """
 
 from __future__ import annotations
 
 import ctypes
 from dataclasses import dataclass
+
+from . import erisim
 
 #: Modelin görsel token ızgarası: bir token 28x28 piksel.
 MODEL_TOKEN_PX = 28
@@ -268,31 +280,55 @@ class DisplayMap:
         return "\n".join(lines)
 
 
-# --- Windows'tan gerçek monitörleri okuma -------------------------------------
+# --- Gerçek monitörleri okuma (platform seçimi tek yerde) ---------------------
 
 _MONITORINFOF_PRIMARY = 0x1
 
 
-class _RECT(ctypes.Structure):
-    _fields_ = [
-        ("left", ctypes.c_long),
-        ("top", ctypes.c_long),
-        ("right", ctypes.c_long),
-        ("bottom", ctypes.c_long),
-    ]
+def enumerate_displays(ortam=None) -> DisplayMap:
+    """Bağlı monitörleri okur. Birincil ekran başa alınır.
+
+    Windows'ta EnumDisplayMonitors, X11'de xrandr, Wayland'de kayıtlı
+    portal arka ucu (bkz. `erisim.ekran_sec`). İkisi de sanal masaüstü
+    koordinatı üretir; sıralama sözleşmesi ortak (birincil önce, sonra
+    soldan sağa). Seçim `erisim` üzerinden — başka yerde platform dalı yok.
+    """
+    secim = erisim.ekran_sec(ortam)
+    if secim.ad == "win32":
+        return _windows_monitorler()
+    if secim.ad == "xrandr":
+        from . import goruntu_x11
+
+        return goruntu_x11.monitorler(secim.env or ortam)
+    if secim.hata:
+        raise RuntimeError(secim.hata)
+    # Kayıtlı arka uç: `monitorler()` sözleşmesi bir DisplayMap döndürür.
+    return secim.sinif(secim.env).monitorler()
 
 
-class _MONITORINFO(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", ctypes.c_ulong),
-        ("rcMonitor", _RECT),
-        ("rcWork", _RECT),
-        ("dwFlags", ctypes.c_ulong),
-    ]
+def _windows_monitorler() -> DisplayMap:
+    """Windows API'siyle monitör taraması. ctypes türleri çağrı anında kurulur.
 
+    Sınıflar modül düzeyinde tanımlıydı; Linux'ta `ctypes.WINFUNCTYPE`
+    bulunmadığı için içe aktarma patlıyordu. Buraya taşındı — çağrı yalnızca
+    oturum Windows'sa yapılıyor.
+    """
+    class _RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
 
-def enumerate_displays() -> DisplayMap:
-    """Bağlı monitörleri Windows'tan okur. Birincil ekran başa alınır."""
+    class _MONITORINFO(ctypes.Structure):
+        _fields_ = [
+            ("cbSize", ctypes.c_ulong),
+            ("rcMonitor", _RECT),
+            ("rcWork", _RECT),
+            ("dwFlags", ctypes.c_ulong),
+        ]
+
     user32 = ctypes.windll.user32
     found: list[tuple[_RECT, bool]] = []
 
@@ -331,7 +367,9 @@ def enumerate_displays() -> DisplayMap:
 def virtual_screen_rect() -> tuple[int, int, int, int]:
     """Sanal masaüstünün (left, top, width, height) değeri.
 
-    SendInput'un mutlak fare koordinatlarını normalize etmek için gerekli.
+    `SendInput`'un mutlak fare koordinatlarını normalize etmek için gerekli.
+    Yalnızca Windows'ta çağrılır (`girdi_win32.move_to`); Linux sürücüleri
+    piksel uzayında konuştuğu için orada bu fonksiyona gerek yok.
     """
     user32 = ctypes.windll.user32
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN = 76, 77
@@ -347,10 +385,16 @@ def virtual_screen_rect() -> tuple[int, int, int, int]:
 def set_dpi_awareness() -> None:
     """Süreci monitör başına DPI farkındalığına alır.
 
-    Bu çağrı olmadan Windows koordinatları ölçekler ve yakaladığımız kare ile
-    tıkladığımız nokta birbirini tutmaz. Süreç başlangıcında, pencere
-    oluşturulmadan önce çağrılmalı.
+    Windows'ta bu çağrı olmadan koordinatlar ölçeklenir ve yakaladığımız
+    kare ile tıkladığımız nokta birbirini tutmaz. Süreç başlangıcında,
+    pencere oluşturulmadan önce çağrılmalı.
+
+    Linux'ta bilinçli no-op: DPI ölçeklemesi Windows'a özgü bir süreç
+    farkındalığı sorunu; X11 koordinatları zaten sunucunun piksel
+    uzayında ve yakalama aynı uzaydan geliyor.
     """
+    if erisim.oturum().tur != "windows":
+        return
     DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = ctypes.c_void_p(-4)
     try:
         ctypes.windll.user32.SetProcessDpiAwarenessContext(

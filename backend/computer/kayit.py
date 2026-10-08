@@ -67,13 +67,13 @@ import ctypes
 import shutil
 import threading
 import time
-from ctypes import wintypes
 from pathlib import Path
 
 from ..config import REPO_ROOT
 from .masaustu import _PROCESS_INFORMATION, _STARTUPINFOW
+from .win32_kabuk import WinDLL, wintypes
 
-_k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_k32 = WinDLL("kernel32", use_last_error=True)
 
 # `ctypes` bildirilmemiş bir dönüş tipini `int`, yani 32 bit sayıyor ve
 # 64 bitlik bir tutamacı sessizce kırpıyor. Kırpılmış tutamaç geçersiz

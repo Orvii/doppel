@@ -4,8 +4,9 @@
 > her kararın arkasındaki ölçümlerle.
 
 Kendi yan masasında oturan bir bilgisayar kontrol ajanı. Ekranı Claude Opus
-5'in `computer_toolset_20260801` araç setiyle görüyor, fareyi ve klavyeyi ham
-Win32 `SendInput` ile sürüyor.
+5'in `computer_toolset_20260801` araç setiyle görüyor; Windows'ta fareyi ve
+klavyeyi ham Win32 `SendInput` ile, Linux'ta oturumun türüne göre XTEST ya da
+masaüstü portallarıyla sürüyor.
 
 Ürünün eski adı Yan Masa'ydı; 2026-10-07'de Doppel oldu. Ajanın **kendi
 masaüstü ve kendi imleci** var: uzun bir işi görünmez bir çalışma alanında
@@ -269,11 +270,31 @@ başlatmıyor, orada işaretli görünmek yalan olurdu.
 Proje kendi başına duruyor: dizini nereye kopyalarsan orada çalışıyor,
 hiçbir çalışma alanı yöneticisine ya da dış depoya bağlı değil.
 
+Windows:
+
 ```
 py -m venv .venv
-.venv/Scripts/python.exe -m pip install -r requirements.txt
+.venv/Scripts/python.exe -m pip install -r requirements.txt -r requirements-windows.txt
 copy .env.example .env
 ```
+
+Linux:
+
+```
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt -r requirements-linux.txt
+cp .env.example .env
+```
+
+Requirements ayrımı kozmetik değil, dürüstlük: `uiautomation` ve `pywinpty`
+paketlerinin Linux tekerleği (wheel) yok, o yüzden
+`requirements-windows.txt`'ye taşındılar. `requirements-linux.txt`'te tek
+paket var: `dbus-next` (Wayland portal taşıyıcısı, çalışma zamanında tembel
+import ediliyor). Linux portunun geri kalanı sistem araçlarıyla
+konuşuyor — `Xvfb`, `xdotool`, `x11-utils`, `ffmpeg`, AT-SPI — ve bunlar
+[Linux](#linux) bölümünde listeli. Sonradan Linux'a özel bir paket gelirse
+yalnızca o dosyaya yazılır; ortak dosyaya asla, yoksa Windows kurulumu hiç
+kullanmadığı paketleri kurar.
 
 Anahtarlar `.env` dosyasına girer. `.env` `.gitignore`'da — repoya asla
 girmemeli. `ANTHROPIC_API_KEY` yoksa uygulama açılıyor ama çubukta
@@ -285,6 +306,8 @@ bir güncelleme onları silmemeli. `AJAN_STATE_DIR` ile taşınabiliyor.
 
 ## Çalıştırma ve doğrulama
 
+Windows:
+
 ```
 .venv/Scripts/pythonw.exe doppel.py                          # uygulama
 .venv/Scripts/python.exe -m pytest tests -q                # saf mantık, 836 test
@@ -294,6 +317,20 @@ bir güncelleme onları silmemeli. `AJAN_STATE_DIR` ile taşınabiliyor.
 .venv/Scripts/python.exe scripts/ajan.py                   # ajan, etkileşimli
 .venv/Scripts/python.exe scripts/ajan.py "Not Defteri'ni aç"
 ```
+
+Linux:
+
+```
+./Doppel.sh                                                  # uygulama
+.venv/bin/python -m pytest tests -q                          # takım
+```
+
+`Doppel.sh` sanal ortamı kendi buluyor (önce `.venv/bin/python3`, yoksa
+`.venv/bin/python`, o da yoksa PATH'teki `python3`) ve `doppel.py`'yi exec
+ediyor; activate etmeye gerek yok. Otomatik başlatma
+`~/.config/autostart/` içine `Exec="<deponun mutlak yolu>/Doppel.sh"` yazıyor
+— başlatıcının depo kökünde durması ve adının bir sözleşme olması bu
+yüzden.
 
 `--input` ve `ajan.py` gerçekten fareyi ve klavyeyi sürüyor. Her an **Esc'ye
 üç kez** basarak durdurabilirsin.
@@ -774,6 +811,69 @@ Kayda dosya gövdeleri ve yetenek kodu **girmiyor**; anahtar deseni taşıyan
 alanlar `[gizlendi]` yazılıyor. Bir denetim kaydının kendisi sızıntı kaynağı
 olmamalı.
 
+## Linux
+
+Doppel her Linux'ta çalışıyor. **X11 bir gereklilik değil, bir yetenek:**
+port açılışta oturumun türüne bakıp ona göre davranıyor. Elinde ne
+olduğu oturuma bağlı:
+
+| Oturum | Kendi masa (yan ekran) | Senin masaüstünü sürme | Erişilebilirlik |
+| --- | --- | --- | --- |
+| X11 | Var, Xvfb ile | Var — XTEST girdisi, `mss` yakalama | AT-SPI, oturum veri yolu varsa |
+| Wayland | Var, Xvfb ya da Xephyr ile | Yalnızca girdi: RemoteDesktop portalı, onay penceresi çıkıyor. Ekran yakalama "uygulanmadı" hatası veriyor | AT-SPI, oturum veri yolu varsa |
+| Başsız | Var | Yok | Yok |
+
+Gereken sistem paketleri (`apt install`):
+
+```
+xvfb xdotool x11-utils ffmpeg            # yan masa, X11 girdisi, kayıt
+wmctrl                                   # pencere yönetimi
+dbus dbus-x11                            # oturum veri yolu (AT-SPI için)
+at-spi2-core python3-pyatspi             # erişilebilirlik (pip'ten kurulamıyor)
+libxkbcommon-x11-0 libxcb-* libxcb-xinerama0 libegl1   # Qt xcb eklentisi
+```
+
+Tek Linux'a özel pip paketi `dbus-next` (bkz. `requirements-linux.txt`);
+yukarıdakilerin gerisi sistem aracı. Bu paket portal taşıyıcısının içinde
+tembel (lazy) import ediliyor — yalnızca Wayland oturumu gerçekten o yola
+girdiğinde; import ya da test toplama anında asla.
+
+**Wayland doğrudan sürülmüyor, masaüstü portallarından geçiyor.** Sebebi
+tek cümle: bir Wayland istemcisinin başka bir uygulamanın pencere içeriğini
+okuması ya da ona girdi enjekte etmesi için taşınabilir bir protokol yok —
+kompozitör o veriyi kendi elinde tutuyor ve portallar tek meşru kapı.
+**Portal üzerinden girdi uygulandı ve sahte nesnelerle test edildi; ekran
+yakalama bu sürümde uygulanmadı** — oturum el sıkışması duruyor ama
+PipeWire karelerini görüntüye çevirme bilerek dışarıda bırakıldı; yakalama
+çağrısı yanlış bir şey döndürmek yerine belgelenmiş bir "uygulanmadı"
+hatası veriyor. Bu hata kendi türünde (`YakalamaYokHatasi`) ve mesajı neyin
+başarılı olduğunu yazıyor — hazırlanan oturum, akış sayısı, alınan fd —
+böylece izin reddi sanılamıyor; monitör/aygıt listesi de aynı şekilde hata
+veriyor, çünkü onaylanmış bir oturum dışında o bilgi yok. Yakalama
+gerektiğinde X11 oturumu (ya da yan ekran) kullanılıyor. Portal girdi yolu
+gerçek bir Wayland masaüstünde hiç koşmadı; biri deneyene kadar
+doğrulanmamış sayılır. Dürüst boşluk şu: CI'da ne kompozitör var ne
+`xdg-desktop-portal`.
+
+Dürüstçe söylenmesi gereken eksikler:
+
+- **Gerçek bir Wayland masaüstünde ekran yakalama.** El sıkışma uygulandı,
+  kare çevirimi bilerek uygulanmadı; çalışıyormuş gibi yapmak yerine bunu
+  söylüyor.
+- **Senin masaüstündeki başka uygulamaların pencerelerini Windows'taki
+  `PrintWindow` gibi yakalamak yok.** X11'de bir uygulamanın başka bir
+  uygulamanın penceresini kompozitörün izni olmadan görüntülemesinin
+  taşınabilir bir yolu yok. Onun yerine yan ekran var — zaten o iş için
+  duruyor.
+- **Etkileşimli pencere yöneticisi davranışı.** Odak, yığın sırası ve EWMH
+  Xvfb altında pencere yöneticisi olmadan koşuyor; gerçek bir WM sürpriz
+  yapabilir. CI bunu bilerek gizlemiyor.
+- **GPU ile çizim yok.** Qt yazılım çizimine düşüyor.
+
+Kural Windows tarafındakiyle aynı: olmayan bir yetenek bunu söylüyor ve
+onay kapısı sormaya doğru yanılıyor. Hiçbir şey çalışıyormuş gibi yapıp
+sonra sessizce hiçbir şey yapmıyor.
+
 ## Güvenlik
 
 Üç katman, üçü de bağımsız:
@@ -975,13 +1075,20 @@ app/
   sheet_view.py         Excel benzeri tablo: formül çubuğu, sayfa sekmeleri
   panels.py             tablo, yazı, kod, terminal, değişiklik listesi
 doppel.py               masaüstü uygulaması girişi
+Doppel.bat / Doppel.sh  başlatıcılar: Windows / Linux (sanal ortamı kendi bulur)
+requirements.txt        ortak pip paketleri
+requirements-windows.txt  uiautomation, pywinpty — Linux tekerleği yok
+requirements-linux.txt    Linux'a özel paketler: dbus-next (portal taşıyıcısı)
 scripts/
   check_phase1.py       yakalama ve girdi elle doğrulama
   ajan.py               terminal arayüzü (ajan çekirdeği)
+  pre-commit            commit anında sır taraması (sahnelenen fark)
+  secret-patterns.sh    sır kalıpları — kanca ve CI aynı dosyayı okur
   svg_yap.py            maskotun pozlarını üretir
   svg_onizleme.py       üretilen SVG'lerin PNG önizlemesi + tabaka
   masa_dogrula.py       ajanın masasını gerçek pencerelerle ölçer
   tanitim.py            README'nin tanıtım karesi — ekran değil, widget
+.github/workflows/ci.yml  Windows tam takım + Linux Xvfb/dbus takımı
 varliklar/
   kaynak/bloub.svg      maskotun asıl silueti; pozlar buradan türüyor
   svg/                  üretilen varlıklar — elle düzenlenmez
