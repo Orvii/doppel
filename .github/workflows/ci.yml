@@ -60,6 +60,13 @@
 #   simülasyonu `tests/test_isletim.py::TestLinuxIceAktarma` +
 #   `tests/test_linux_import_guvenligi.py`. Kısayol kaydı Linux'ta
 #   bilinçli olarak yok; dürüst bozulma `TestKisayolLinux` ile sınanıyor.
+#   Toplama artık Linux'ta düşmüyor (3 collect hatası -> 0; 922 test
+#   koşuyor). Kalan kırmızı backend port iş kollarında ve adı burada:
+#   `backend/computer/apps.py:28` (`import winreg`), `backend/computer/
+#   uia.py:21` (`import uiautomation`), `backend/computer/windows.py:112`
+#   (`ctypes.WINFUNCTYPE`) ve `backend/computer/goruntu_x11.py` (xrandr
+#   yoklaması). Bu dosyalar bu iş kolunun yüzeyi değil; port toplayınca
+#   kırmızı olarak görünmeleri kasıtlı — gizlenmiyorlar.
 #
 # ## Windows'ta NE koşuyor
 #
