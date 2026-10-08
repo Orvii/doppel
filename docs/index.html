@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doppel — the desktop agent that keeps its own cursor</title>
+<meta name="description" content="Doppel is a Claude computer-use agent with its own desktop and its own cursor. It clicks, types and reads UI on an invisible desk while you keep working on yours. Windows 11 and Linux. MIT.">
+<link rel="canonical" href="https://orvii.github.io/doppel/">
+<meta name="theme-color" content="#F3FCFE">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Doppel — the desktop agent that keeps its own cursor">
+<meta property="og:description" content="Its own desktop, its own cursor. Every step on the record, every action verified, destructive clicks gated. Windows 11 and Linux, MIT.">
+<meta property="og:url" content="https://orvii.github.io/doppel/">
+<meta property="og:image" content="https://orvii.github.io/doppel/assets/hero.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="assets/eyes.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400..700;1,400..700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/site.css">
+<script src="assets/site.js" defer></script>
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Doppel",
+  "operatingSystem": "Windows 11, Linux",
+  "applicationCategory": "DeveloperApplication",
+  "url": "https://orvii.github.io/doppel/",
+  "license": "https://opensource.org/licenses/MIT",
+  "codeRepository": "https://github.com/Orvii/doppel",
+  "description": "A computer-use agent with its own desktop and its own cursor. Claude computer-use + PySide6; Windows 11 and Linux.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap top-in">
+    <a class="brand" href="/doppel/">
+      <svg class="brand-eyes" viewBox="0 0 96 96" aria-hidden="true"><use href="assets/eyes.svg#goz-normal-sol"/><use href="assets/eyes.svg#goz-normal-sag"/></svg>
+      <span>Doppel</span>
+    </a>
+    <nav aria-label="Primary">
+      <a href="#how">How it works</a>
+      <a href="#control">Control</a>
+      <a href="#faq">FAQ</a>
+      <a class="nav-gh" href="https://github.com/Orvii/doppel">GitHub&nbsp;&nearr;</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- 01 · Kahraman: başlık solda, gerçek ürün ekranı sağda, numaralı çağrılar -->
+  <section class="hero">
+    <div class="wrap hero-grid">
+      <div class="hero-copy">
+        <p class="eyebrow">Desktop agent &middot; Windows 11 &amp; Linux</p>
+        <h1>Your cursor stays <em>yours</em>.<br>The work goes to its desk.</h1>
+        <p class="sub">Doppel is a Claude computer-use agent with its own desktop and its own cursor. It clicks, types and reads UI on an invisible desk — or drives yours without ever moving the pointer — while you keep working.</p>
+        <div class="cta-row">
+          <a class="btn btn-solid" href="https://github.com/Orvii/doppel">Clone on GitHub</a>
+          <a class="btn btn-text" href="#how">See how it works &rarr;</a>
+        </div>
+        <p class="install-note">MIT &middot; Python + PySide6 &middot; one dependency outside the Anthropic SDK: it ships its own office</p>
+      </div>
+      <div class="hero-shot">
+        <figure class="shot shot-hero">
+          <img src="assets/hero.png" width="1580" height="840" alt="Doppel's app: an activity list of real agent steps beside the floating command bar and run counters.">
+          <span class="callout c1" aria-hidden="true">1</span>
+          <span class="callout c2" aria-hidden="true">2</span>
+          <span class="callout c3" aria-hidden="true">3</span>
+        </figure>
+        <ol class="legend">
+          <li><b>1</b> Every step it takes, in order</li>
+          <li><b>2</b> The bar: type, Dry-run, stop</li>
+          <li><b>3</b> Steps, unsaved files, terminals</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 · Kanıt: ölçülmüş sayılar, kaynaksız iddia yok -->
+  <section class="proof" aria-label="Measured facts">
+    <div class="wrap proof-row">
+      <div class="stat"><span class="num" data-count-to="1236">0</span><span class="lbl">tests in the pure-logic suite, none of which touch the real Windows API</span></div>
+      <div class="stat"><span class="num" data-count-to="0">0</span><span class="lbl">driver-level input calls in the tested paths — clicks travel as posted window messages, so your physical cursor is never called</span></div>
+      <div class="stat"><span class="num">3&times;</span><span class="lbl">Esc presses within 0.8&nbsp;s stop everything, from anywhere, at any moment</span></div>
+      <div class="stat"><span class="num">2</span><span class="lbl">platforms: Windows 11, and Linux — X11, Wayland or headless, it brings its own display</span></div>
+    </div>
+  </section>
+
+  <!-- 03 · Ne yapıyor: üç blok, her biri gerçek ürün kırpımıyla -->
+  <section class="features" id="how">
+    <div class="wrap">
+      <h2 class="section-title">What it actually does</h2>
+
+      <div class="feature reveal">
+        <div class="feature-copy">
+          <p class="label">Own desk</p>
+          <h3>Long jobs run where your eyes aren't</h3>
+          <p>The <code>side_*</code> tools open an invisible desktop with a cursor of their own. Filling forms, walking a multi-page flow, collecting data — it happens there, at full speed, while the desk you're looking at doesn't so much as twitch.</p>
+          <p class="fine">On Windows the desk is a real hidden desktop object; on Linux it's a real second X display. Anything you must witness stays on your desk — and it knows the difference.</p>
+        </div>
+        <figure class="shot">
+          <img src="assets/command-bar.png" width="512" height="257" alt="The floating command bar: status line, step trail, microphone, input field, Dry-run toggle and stop button.">
+          <figcaption>The bar floats over your work. Dry-run plans without executing; the stop button ends the run mid-click.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature reveal rev">
+        <div class="feature-copy">
+          <p class="label">Record</p>
+          <h3>Every step is written down while it happens</h3>
+          <p>Each run leaves a JSONL audit in <code>runs/</code>: which tool, what it ran on, whether it failed — and for document edits, a mandatory <code>why</code>. When the agent claims it did something, the claim is checked against that record, not against its own summary.</p>
+          <p class="fine">The screenshot is a real run — reading desktop CSVs into a sheet, then writing <code>Sheet1!B6&nbsp;=&nbsp;=SUM(B2:B5)</code> — not a mock.</p>
+        </div>
+        <figure class="shot">
+          <img src="assets/run-list.png" width="960" height="705" alt="Activity list: You — read the CSVs on my desktop; Listing a folder; Reading a file with parsed values; Opening and editing a spreadsheet document.">
+          <figcaption>Concrete at every line: four CSVs found, values read, the formula written.</figcaption>
+        </figure>
+      </div>
+
+      <div class="feature reveal">
+        <div class="feature-copy">
+          <p class="label">Gate</p>
+          <h3>It can't quietly click <i>Send</i></h3>
+          <p>Irreversible clicks — Send, Delete, Buy, Submit, in any window, by any tool — wait for you. The approval hook defaults to deny when nothing is there to answer. Dry-run is an allowlist: a tool it has never seen is blocked by default, not trusted by default.</p>
+          <p class="fine">Recorded workflows replay only while their signature still matches; the moment a screen differs, playback halts instead of improvising.</p>
+        </div>
+        <figure class="shot">
+          <img src="assets/status-bar.png" width="1580" height="77" alt="Status bar: Working, the current instruction, and counters for steps, unsaved files and terminals.">
+          <figcaption>“1 unsaved” is a fact you can act on before the run ends — not a surprise after.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04 · Döngü: koşunun kendisi -->
+  <section class="loop" id="loop">
+    <div class="wrap">
+      <h2 class="section-title">From words to a checked result</h2>
+      <ol class="loop-steps">
+        <li><span class="n">01</span><b>Plan.</b> Dry-run maps the job against the allowlist and shows you the steps — nothing moves yet.</li>
+        <li><span class="n">02</span><b>Work.</b> The loop runs one step at a time, re-reading state after each action instead of assuming. A failed step halts the run; it does not improvise past it.</li>
+        <li><span class="n">03</span><b>Record.</b> Steps, results and the reason for every document edit land in the run's audit log as they happen — a halted run still leaves its record.</li>
+        <li><span class="n">04</span><b>Check.</b> The closing claim is compared against the record. Unsupported claims are flagged instead of believed.</li>
+      </ol>
+    </div>
+  </section>
+
+  <!-- 05 · Nerede çalışır: entegrasyon yüzeyi -->
+  <section class="works" id="works">
+    <div class="wrap">
+      <h2 class="section-title">It works where your work already is</h2>
+      <div class="works-grid">
+        <div class="work"><h3>Files &amp; shell</h3><p>Read, write and edit files directly; <code>run_shell</code> for bulk work that would be fifty clicks in a GUI.</p></div>
+        <div class="work"><h3>Real terminals</h3><p>Persistent PTY sessions — ConPTY on Windows, <code>pty</code> on Linux — for the programs that wait on input: REPLs, servers, interactive tools.</p></div>
+        <div class="work"><h3>Its own office</h3><p>Reads and writes <code>.xlsx</code> and <code>.docx</code> without Office installed — and evaluates formulas with a real engine instead of guessing what a cell is worth.</p></div>
+        <div class="work"><h3>MCP servers</h3><p>External tools arrive over MCP with their schemas shown verbatim and every call approved — the definitions are never rewritten on the way in.</p></div>
+        <div class="work"><h3>Your apps, by name</h3><p>“Open Discord” resolves against the Start Menu (Windows) or XDG desktop entries (Linux); a miss answers with the closest names, not a four-screen hunt.</p></div>
+        <div class="work"><h3>Accessibility trees first</h3><p>UI Automation on Windows, AT-SPI on Linux. Reading the controls is cheaper and more precise than looking at pixels — screenshots are the fallback, not the method.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 · Denetim: mekanizmaları adıyla söyler, "enterprise-grade" demez -->
+  <section class="control" id="control">
+    <div class="wrap">
+      <h2 class="section-title">The controls are the product</h2>
+      <div class="control-list">
+        <div class="c-item"><h3>Default deny</h3><p>The approval hook answers “no” when nothing is attached to answer it. Destructive actions don't get the benefit of the doubt.</p></div>
+        <div class="c-item"><h3>Esc, three times</h3><p>Own polling thread, 0.8-second window, works during waits and mid-generation. The kill switch doesn't queue behind the thing it's stopping.</p></div>
+        <div class="c-item"><h3>Allowlist dry-run</h3><p><code>kuru.py</code> plans against a read-only allowlist. Unknown tools are blocked by default and say so; capabilities it doesn't have can't be invented into a plan.</p></div>
+        <div class="c-item"><h3>Claims vs record</h3><p>The closing message is cross-checked against what actually ran. A claim with no supporting step is reported as unsupported.</p></div>
+        <div class="c-item"><h3>Secrets stay out</h3><p>One module touches the environment; the API key lives in <code>.env</code>, which is gitignored. A pre-commit hook and CI scan with the same pattern list, from one source file.</p></div>
+        <div class="c-item"><h3>Workflows that halt</h3><p>A recorded workflow replays only while the screen still matches its signature. Drift stops playback — it doesn't guess.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 · Fiyat: tek satır, dürüst -->
+  <section class="price" id="price">
+    <div class="wrap price-in">
+      <h2>Free, MIT, bring your own key.</h2>
+      <p>The app costs nothing and asks for nothing. You pay only your Claude API usage, on your account. No tier table, because there is no tier table.</p>
+    </div>
+  </section>
+
+  <!-- 08 · SSS: gerçek itirazlar -->
+  <section class="faq" id="faq">
+    <div class="wrap faq-grid">
+      <h2 class="section-title">Questions worth asking</h2>
+      <div class="faq-list">
+        <details>
+          <summary>Will it take over my mouse?</summary>
+          <p>No. Real-desktop clicks and keys go in as posted window messages on Windows (<code>WM_CHAR</code>, <code>WM_LBUTTON*</code>) — the measured paths never call the physical cursor — and long jobs can run entirely on its own desktop. On Linux the same idea holds: input goes to a second X display by construction, and desktop input is a capability it probes rather than assumes.</p>
+        </details>
+        <details>
+          <summary>What if it gets something wrong?</summary>
+          <p>The loop halts on the first failed step instead of improvising past it, every step is recorded as it happens (a halted run still leaves its record), destructive clicks wait for you, and Esc&nbsp;&times;3 stops everything mid-action. The design assumption is that it will sometimes be wrong, and each layer exists for that day.</p>
+        </details>
+        <details>
+          <summary>Does it really work on Linux?</summary>
+          <p>Yes — the port is in this repo, with a Linux CI job (Xvfb + AT-SPI) running on every push. Linux gets the full own-desk story via a real second X display, and it picks the working input capability per session: XTEST under X11, ydotool or the OS portals under Wayland, nothing-but-its-own-desk when headless. Honest boundary: the portal path is implemented and mock-tested, and is proven against real Wayland desktops case by case — the README says exactly which parts are verified where.</p>
+        </details>
+        <details>
+          <summary>Where does my data go?</summary>
+          <p>To Anthropic, with your key, because that is the model. Screenshots are pruned in-context by design (a 1080p frame is real tokens), run records stay in <code>runs/</code> on your machine, and there is no telemetry of ours anywhere in the codebase.</p>
+        </details>
+        <details>
+          <summary>Why does it have its own office?</summary>
+          <p>Because “open Excel and type the formula” is a bad plan when the machine may not have Excel. Shipping <code>openpyxl</code>, <code>python-docx</code> and a formula engine means the agent edits a real workbook it can actually check — and never reports a number it didn't compute.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- 09 · Kapanış -->
+  <section class="closing">
+    <div class="wrap closing-in">
+      <p class="closing-line">Keep your cursor.<br><em>Hand over the busywork.</em></p>
+      <div class="cta-row">
+        <a class="btn btn-solid" href="https://github.com/Orvii/doppel">Clone on GitHub</a>
+        <a class="btn btn-text" href="https://github.com/Orvii/doppel#install">How to install &rarr;</a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-grid">
+    <div class="foot-brand">
+      <svg class="brand-eyes" viewBox="0 0 96 96" aria-hidden="true"><use href="assets/eyes.svg#goz-normal-sol"/><use href="assets/eyes.svg#goz-normal-sag"/></svg>
+      <span>Doppel</span>
+      <p class="fine">An Orvii project. Built on the real TypeScript-free kind of hard work: Python, posted messages and a formula engine.</p>
+    </div>
+    <nav aria-label="Product">
+      <h4>Product</h4>
+      <a href="https://github.com/Orvii/doppel">GitHub</a>
+      <a href="https://github.com/Orvii/doppel/blob/master/PRODUCT.md">Product notes</a>
+      <a href="https://github.com/Orvii/doppel/blob/master/README.md">README</a>
+      <a href="https://github.com/Orvii/doppel/blob/master/README.tr.md">README (Türkçe)</a>
+    </nav>
+    <nav aria-label="Docs">
+      <h4>Docs</h4>
+      <a href="https://github.com/Orvii/doppel#install">Install</a>
+      <a href="https://github.com/Orvii/doppel/blob/master/CLAUDE.md">Repo rules</a>
+      <a href="https://github.com/Orvii/doppel/blob/master/LICENSE">MIT License</a>
+    </nav>
+    <nav aria-label="Orvii">
+      <h4>Orvii</h4>
+      <a href="https://orvii.github.io/harness-atlas/">Harness Atlas</a>
+      <a href="https://github.com/Orvii/ts-lto">ts-lto</a>
+      <a href="https://github.com/Orvii">All projects</a>
+    </nav>
+  </div>
+  <div class="wrap foot-fine">
+    <span>&copy; 2026 Orvii</span>
+    <span>Windows 11 &middot; X11 &middot; Wayland &middot; headless</span>
+  </div>
+</footer>
+
+</body>
+</html>
