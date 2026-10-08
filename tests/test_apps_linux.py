@@ -66,6 +66,16 @@ class TestAyristirma:
         veri = apps_linux.girdi_ayristir("Name=Kayip\n[Desktop Entry]\nName=Var\n")
         assert veri == {"Name": "Var"}
 
+    def test_ayni_anahtar_son_degeri_tasir(self):
+        # GLib GKeyFile (masaüstlerinin fiilî referansı) son değeri tutar;
+        # farklı davranmak aynı dosyayı iki farklı okumak olurdu.
+        veri = apps_linux.girdi_ayristir(
+            "[Desktop Entry]\nName=Birinci\nExec=birinci %u\n"
+            "Exec=ikinci %u\nName=Ikinci\n"
+        )
+        assert veri["Name"] == "Ikinci"
+        assert veri["Exec"] == "ikinci %u"
+
 
 class TestAlanKodalari:
     def test_tek_kodlar_atilir(self):
@@ -130,6 +140,22 @@ class TestKatalog:
 
     def test_adsiz_girdi_atlanir(self, xdg):
         yaz(xdg, "adsiz.desktop", "[Desktop Entry]\nType=Application\nExec=hicbir\n")
+        assert apps_linux.katalog(refresh=True) == []
+
+    def test_kaldirma_ve_yardim_girdileri_yok(self, xdg):
+        # Windows tarafındaki süzgeçle aynı söz: ajanın açması istenen son
+        # şey "Uninstall".
+        yaz(xdg, "uninstall.desktop", "[Desktop Entry]\nType=Application\n"
+            "Name=Firefox Uninstall\nExec=kaldir\n")
+        yaz(xdg, "help.desktop", "[Desktop Entry]\nType=Application\n"
+            "Name=Firefox Help\nExec=yardim\n")
+        yaz(xdg, "firefox.desktop", "[Desktop Entry]\nType=Application\n"
+            "Name=Firefox\nExec=firefox\n")
+        assert [a.name for a in apps_linux.katalog(refresh=True)] == ["Firefox"]
+
+    def test_genericnamedeki_kaldirma_sozu_de_suzulur(self, xdg):
+        yaz(xdg, "temizle.desktop", "[Desktop Entry]\nType=Application\n"
+            "Name=Temizleyici\nGenericName=Uninstall Helper\nExec=temizle\n")
         assert apps_linux.katalog(refresh=True) == []
 
     def test_kullanici_dizini_one_gecer(self, xdg, tmp_path, monkeypatch):

@@ -2392,7 +2392,17 @@ class TestUygulamaKatalogu:
 
     def test_katalog_dolu(self):
         from backend.computer import apps
-        assert len(apps.catalog()) > 20
+
+        katalog = apps.catalog()
+        if sys.platform == "win32":
+            # Ölçülmüş iddia Windows'a ait: on yedi yaygın uygulamadan on
+            # ikisi katalog olmadan bulunamıyordu.
+            assert len(katalog) > 20
+        else:
+            # Linux'ta katalog boyutu makineye kurulu `.desktop`
+            # girdilerine bağlı; ölçmediğimiz bir sayıyı iddia etmiyoruz.
+            # Kanıtlanan şey çağrının patlamadan ve biçimi doğru dönmesi.
+            assert all(a.kind == "xdg" for a in katalog)
 
     def test_onbellek_ikinci_taramayi_atliyor(self):
         import time

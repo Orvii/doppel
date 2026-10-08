@@ -39,7 +39,7 @@ from pathlib import Path
 #: Windows tarafındakiyle aynı önbellek süresi ve aynı gerekçe: uygulama
 #: kurmak seyrek bir iş, her `launch_app` çağrısında yüzlerce dosyayı
 #: taramanın anlamı yok.
-from .apps import CACHE_SECONDS, App
+from .apps import CACHE_SECONDS, App, _tokens
 
 #: `XDG_DATA_DIRS` set değilse standardın kendi varsayılanı.
 _XDG_VARSAYILAN_DATA = "/usr/local/share:/usr/share"
@@ -123,8 +123,9 @@ def girdi_ayristir(metin: str) -> dict[str, str]:
 
     Yalnızca ilk bölüm okunuyor; `[Desktop Action ...]` bölümleri ayrı
     girdiler ve kataloğa karışmamalı. Aynı anahtar ikinci kez görülürse
-    ilk değer kazanıyor (ilkeler), çünkü bazı dosyalar yerelleştirilmiş
-    satırları anahtarın ardına değil, ayrı satır olarak koyuyor.
+    **son** değer kazanıyor: masaüstlerinin fiilî referansı GLib'in
+    GKeyFile'i böyle yapıyor ve oradan farklı davranmak, aynı dosyada iki
+    uygulamanın iki farklı `Exec` görmesi demek olurdu.
     """
     veri: dict[str, str] = {}
     bolum = ""
@@ -138,7 +139,7 @@ def girdi_ayristir(metin: str) -> dict[str, str]:
         if bolum != "Desktop Entry" or "=" not in satir:
             continue
         anahtar, _, deger = satir.partition("=")
-        veri.setdefault(anahtar.strip(), deger.strip())
+        veri[anahtar.strip()] = deger.strip()
     return veri
 
 
@@ -167,9 +168,25 @@ def girdiden_app(yol: Path, ortam: dict[str, str] | None = None) -> App | None:
     ad = next((veri[k] for k in deneme if veri.get(k)), "") or veri.get("Name", "")
     if not ad:
         return None
+    # Kaldırma/yardım girdileri uygulama değil; Windows tarafındaki
+    # `_start_menu` ile aynı süzgeç ve aynı gerekçe: ajanın "uninstall"
+    # açması istenen son şey. Ölçüt ad ve GenericName birlikte — bazı
+    # dağıtımlar bunu Name değil GenericName'e yazıyor.
+    if _tokens(ad) & _KALDIRMA_SOZLERI or _tokens(veri.get("GenericName", "")) & _KALDIRMA_SOZLERI:
+        return None
     # GenericName arama için ayrı taşınıyor (`App.alias`); Windows
     # girdileri bu alanı hiç doldurmuyor, orada davranış değişmiyor.
     return App(ad, "xdg", str(yol), veri.get("GenericName", ""))
+
+
+#: Kataloğa alınmayan ad parçaları — Windows `_start_menu`ndeki kaldırma
+#: süzgeciyle **birebir aynı küme**. Fark olsaydı iki platform aynı ada
+#: farklı karar verir ve bu sessiz bir ayrışma olurdu; `remove` gibi fazladan
+#: bir kelime meşru bir uygulamayı (ör. "Remove Background") eleyebilirdi.
+_KALDIRMA_SOZLERI = {
+    "uninstall", "kaldir", "help", "yardim", "readme", "website",
+    "documentation",
+}
 
 
 def _yerel_ad_anahtarlari(ortam: dict[str, str]) -> list[str]:
