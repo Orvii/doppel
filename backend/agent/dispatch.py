@@ -332,10 +332,16 @@ class Dispatcher:
     def _gate(self, name: str, payload: dict[str, Any]) -> None:
         """Riskli eylemde onay ister. Onay yoksa eylem hiç çalışmaz."""
         etiket, okunabilir = self._hedef_etiketi(name, payload)
+        try:
+            baslik = win.foreground_title()
+        except win.PencereYonetimiYokHatasi:
+            # Wayland'de ön plan okunamıyor; kapı yine de çalışmalı ve
+            # başlık süzgeci devre dışı kalırken etiket süzgeci kalsın.
+            baslik = ""
         verdict = gate.classify(
             name,
             payload,
-            window_title=win.foreground_title(),
+            window_title=baslik,
             label=etiket,
             label_okunabilir=okunabilir,
         )

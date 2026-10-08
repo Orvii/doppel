@@ -9,13 +9,44 @@ odakta ne varsa oraya yazarlar. Ajan döngüsünde her klavye eylemi önce
 `assert_foreground` ile hangi pencereye yazdığını doğrulamalı. Ekran
 görüntüsündeki pencere ile odaktaki pencere aynı olmayabilir; arada geçen
 saniyede kullanıcı sekme değiştirmiş olabilir.
+
+## Port notu: seçim `erisim`den, gövde değişmedi
+
+Linux'ta aynı sözleşmeyi EWMH arka ucu (`windows_linux.py`) veriyor;
+seçim çağrı anında `erisim.oturum()`a soruluyor — başka yerde platform
+dalı yok. `ctypes.wintypes` toleranslı içe aktarılıyor (`win32_kabuk`):
+Linux'ta bu ad yok ve modülün içe aktarılması patlamamalı, yoksa ajanın
+kendisi Linux'ta açılmazdı. Windows gövdesi birebir korundu.
 """
 
 from __future__ import annotations
 
 import ctypes
 import time
-from ctypes import wintypes
+
+from .win32_kabuk import wintypes
+#: Linux arka ucunun "bu oturumda pencere yönetimi yok" hatası — burada da
+#: adı var ki çağıranlar platforma göre import etmesin. Windows'ta hiç
+#: fırlatılmaz; `win32_kabuk.WindowsGerekli` ile aynı desen.
+from .windows_linux import PencereYonetimiYokHatasi  # noqa: F401
+
+
+def _linux_arka_uc():
+    """Bu oturum Linux mu? Öyleyse EWMH modülü, değilse None.
+
+    `erisim` içe aktarılamazsa (beklenmez) Windows yolu korunuyor —
+    oturum sorusunun tek kaynağı orası, yedek dar ve bilinçli.
+    """
+    try:
+        from . import erisim
+
+        if erisim.oturum().tur == "windows":
+            return None
+        from . import windows_linux
+
+        return windows_linux
+    except ImportError:  # pragma: no cover - erisim varken olmaz
+        return None
 
 
 class FocusError(RuntimeError):
@@ -24,6 +55,9 @@ class FocusError(RuntimeError):
 
 def foreground_title() -> str:
     """Ön plandaki pencerenin başlığı. Pencere yoksa boş dize."""
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.foreground_title()
     user32 = ctypes.windll.user32
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
@@ -36,6 +70,9 @@ def foreground_title() -> str:
 
 def foreground_process() -> str:
     """Ön plandaki pencerenin çalıştırılabilir dosya adı, örn. `notepad.exe`."""
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.foreground_process()
     user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
     hwnd = user32.GetForegroundWindow()
     if not hwnd:
@@ -106,6 +143,9 @@ def find_window(title_contains: str) -> int:
     arka planda başlıksız yardımcı pencereleri oluyor ve onlardan birini
     öne getirmek hiçbir şey yapmıyor gibi görünüyor.
     """
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.find_window(title_contains)
     hedef = title_contains.lower()
     bulunan: list[int] = []
 
@@ -139,6 +179,9 @@ def force_foreground(hwnd: int) -> None:
     Sonucu doğrulamıyor — çağıran doğrulasın. Bu yalnızca çağrının
     yapılabilecek en iyi hâli.
     """
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.force_foreground(hwnd)
     user32 = ctypes.windll.user32
     hedef_thread = user32.GetWindowThreadProcessId(hwnd, None)
     on_hwnd = user32.GetForegroundWindow()
@@ -166,6 +209,9 @@ def activate(title_contains: str, timeout: float = 3.0) -> bool:
     çağrıyı sessizce yok sayıp yalnızca görev çubuğunu yakıp söndürüyor.
     Bu yüzden sonuç varsayılmıyor, ön plana geçtiği **doğrulanıyor**.
     """
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.activate(title_contains, timeout)
     hwnd = find_window(title_contains)
     if not hwnd:
         return False
@@ -187,6 +233,9 @@ def activate(title_contains: str, timeout: float = 3.0) -> bool:
 
 def window_rect(title_contains: str) -> tuple[int, int, int, int] | None:
     """Pencerenin sanal masaüstündeki dikdörtgeni: (sol, üst, sağ, alt)."""
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.window_rect(title_contains)
     hwnd = find_window(title_contains)
     if not hwnd:
         return None

@@ -25,9 +25,13 @@ from __future__ import annotations
 import os
 import subprocess
 import time
-import winreg
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+try:  # winreg yalnızca Windows'ta; Linux'ta yok
+    import winreg
+except ImportError:
+    winreg = None  # type: ignore[assignment]
 
 #: Katalog bu kadar saniye taze sayılıyor. Uygulama kurmak seyrek bir iş;
 #: her `launch_app` çağrısında 146 kısayolu taramanın anlamı yok.
@@ -51,9 +55,12 @@ _NOISE = {
 @dataclass(frozen=True)
 class App:
     name: str
-    #: `kisayol`, `exe` ya da `magaza`
+    #: `kisayol`, `exe`, `magaza` (Windows) ya da `xdg` (Linux).
     kind: str
     target: str
+    #: Aramada adın yanında sayılan ikinci ad. Linux'ta `.desktop`un
+    #: GenericName'i ("Web Browser"); Windows kaynakları doldurmuyor.
+    alias: str = field(default="")
 
     def describe(self) -> str:
         return f"{self.name}  [{self.kind}]"
@@ -91,6 +98,8 @@ def _start_menu() -> list[App]:
 
 
 def _app_paths() -> list[App]:
+    if winreg is None:  # Linux: bu kaynak yok, katalog boş dönüyor
+        return []
     out: list[App] = []
     for hive in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
         try:
@@ -139,7 +148,28 @@ def _store_apps() -> list[App]:
 _cache: tuple[float, list[App]] | None = None
 
 
+def _linux_arka_uc():
+    """Bu oturum Linux mu? Öyleyse XDG modülü, değilse None.
+
+    `erisim` içe aktarılamazsa (beklenmez) Windows yolu korunuyor —
+    oturum sorusunun tek kaynağı orası.
+    """
+    try:
+        from . import erisim
+
+        if erisim.oturum().tur == "windows":
+            return None
+        from . import apps_linux
+
+        return apps_linux
+    except ImportError:  # pragma: no cover - erisim varken olmaz
+        return None
+
+
 def catalog(refresh: bool = False) -> list[App]:
+    linux = _linux_arka_uc()
+    if linux is not None:
+        return linux.katalog(refresh)
     global _cache
     if not refresh and _cache and time.monotonic() - _cache[0] < CACHE_SECONDS:
         return _cache[1]
@@ -178,17 +208,26 @@ def search(query: str, limit: int = 8) -> list[App]:
     puanli: list[tuple[int, int, App]] = []
     for app in catalog():
         ad = normalise(app.name)
+        tam = ad
+        # Windows girdilerinde alan boş; Linux'ta GenericName ("Web Browser")
+        # ikinci ad olarak daha zayıf bir puanla katılıyor — "tarayıcı"
+        # araması Firefox'u "Firefox Web Browser"tan önce görmeli.
+        takma = normalise(app.alias) if app.alias else ""
         if ad == hedef:
             puan = 0
         elif ad.startswith(hedef):
             puan = 1
         elif kelimeler and kelimeler <= _tokens(app.name):
             puan = 2
-        elif hedef in ad:
+        elif takma and (takma == hedef or takma.startswith(hedef)
+                        or hedef in takma):
             puan = 3
+            tam = takma
+        elif hedef in ad:
+            puan = 4
         else:
             continue
-        puanli.append((puan, len(ad), app))
+        puanli.append((puan, len(tam), app))
 
     puanli.sort(key=lambda x: (x[0], x[1], x[2].name.lower()))
     return [app for _p, _l, app in puanli[:limit]]
@@ -224,7 +263,15 @@ def launch_argv(app: App) -> list[str]:
 
     Kısayol ve mağaza girdileri `explorer.exe` üzerinden açılıyor: `.lnk`
     çözümünü ve `shell:AppsFolder` protokolünü bilen o.
+
+    Linux `xdg` girdisi buraya hiç gelmiyor — `catalog` orada zaten
+    `apps_linux`e devrediyor ve Exec çözümü orada kalıyor; bu fonksiyonun
+    Linux dalı yalnızca elle kurulmuş bir `App` için emniyet kemeri.
     """
+    if app.kind == "xdg":
+        from . import apps_linux
+
+        return apps_linux.launch_argv(app)
     if app.kind == "magaza":
         return ["explorer.exe", f"shell:AppsFolder\\{app.target}"]
     if app.kind == "kisayol":
