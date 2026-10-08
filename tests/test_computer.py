@@ -699,6 +699,375 @@ class TestTerminalKeys:
             TerminalSession.send_key(s, "hyperspace")
 
 
+class _SahteSurec:
+    """PTY yerine geçen sahte süreç. Gerçek fd, gerçek sinyal yok."""
+
+    def __init__(self):
+        self.cagrilar = []
+        self.canli = True
+
+    def isalive(self):
+        return self.canli
+
+    def read(self, size=4096):
+        raise EOFError("bitti")
+
+    def write(self, metin):
+        self.cagrilar.append(("write", metin))
+
+    def setwinsize(self, cols, rows):
+        self.cagrilar.append(("size", cols, rows))
+
+    def terminate(self, force=False):
+        self.cagrilar.append(("terminate", force))
+
+    def stop(self):
+        self.cagrilar.append(("stop",))
+        self.canli = False
+
+
+class TestTerminalLinux:
+    """Linux portunun saf kısmı — Windows'ta koşuyor, ama hesap platform
+    bağımsız: aynı fonksiyonlar Linux'ta aynı girdiyle aynı sonucu verir.
+    Buraya dosya sistemi, sinyal ve fd girmez; onları test etmek Linux
+    gerektirir ve dürüstçe "doğrulanmadı" diye işaretlendi."""
+
+    def test_kabuk_shell_degiskenini_izler(self):
+        from backend.computer.terminal import kabuk_argv
+        assert kabuk_argv({"SHELL": "/usr/bin/fish"}, lambda y: True) == ["/usr/bin/fish"]
+
+    def test_kabuk_bayat_shell_yolundan_asar(self):
+        # $SHELL artık var olmayabilir; sıradaki adaya düşülmeli.
+        from backend.computer.terminal import kabuk_argv
+        var = lambda y: y == "/bin/bash"
+        assert kabuk_argv({"SHELL": "/usr/bin/yok"}, var) == ["/bin/bash"]
+
+    def test_kabuk_zsh_a_sabitlenmiyor(self):
+        # zsh daima /bin/bash'e düşülüyor; zsh hiçbir Linux'ta garanti değil.
+        from backend.computer.terminal import kabuk_argv
+        var = lambda y: y in ("/bin/sh",)
+        assert kabuk_argv({}, var) == ["/bin/sh"]
+
+    def test_kabuk_bulunamazsa_acik_hata(self):
+        from backend.computer.terminal import TerminalError, kabuk_argv
+        with pytest.raises(TerminalError, match="no usable shell"):
+            kabuk_argv({"SHELL": "/yok/1"}, lambda y: False)
+
+    def test_ortam_term_i_sabitler_girdiyi_bozmadan(self):
+        from backend.computer.terminal import oturum_ortami
+        girdi = {"PATH": "/usr/bin", "TERM": "dumb"}
+        yeni = oturum_ortami(girdi)
+        assert yeni["TERM"] == "xterm-256color"
+        assert yeni["PATH"] == "/usr/bin"
+        assert girdi["TERM"] == "dumb"  # çağıranın sözlüğü değişmedi
+
+    def test_pencere_verisi_satir_once_sutun_sonra(self):
+        import struct
+        from backend.computer.terminal import pencere_verisi
+        veri = pencere_verisi(120, 40)
+        assert len(veri) == 8  # dört 16 bit alan
+        assert struct.unpack("HHHH", veri) == (40, 120, 0, 0)
+
+    def test_acilis_plani_komutu_posix_kurallariyla_boler(self):
+        from backend.computer.terminal import acilis_plani
+        argv, cwd, ortam = acilis_plani("python -c 'print(1)'", cwd="/tmp",
+                                        var_mi=lambda y: True)
+        assert argv == ["python", "-c", "print(1)"]
+        assert cwd == "/tmp"
+        assert ortam["TERM"] == "xterm-256color"
+
+    def test_acilis_plani_bos_komutta_kabuk_acar(self):
+        from backend.computer.terminal import acilis_plani
+        argv, _, _ = acilis_plani("  ", ortam={"SHELL": "/bin/bash"},
+                                  var_mi=lambda y: True)
+        assert argv == ["/bin/bash"]
+
+    def test_acilis_plani_bozuk_tirnakta_hata_verir(self):
+        from backend.computer.terminal import TerminalError, acilis_plani
+        with pytest.raises(TerminalError, match="could not parse"):
+            acilis_plani("python 'kapanmamis")
+
+    def test_kapatma_once_yumusak_sinyal(self):
+        from backend.computer.terminal import surec_kapat
+        sinyaller = []
+        sonuc = surec_kapat(lambda: False, sinyaller.append,
+                            sinyaller=(15, 9), bekle=lambda s: None)
+        assert sonuc is False and sinyaller == [15]
+
+    def test_kapatma_dinlemeyen_sureci_sert_oldurur(self):
+        import time
+        from backend.computer.terminal import surec_kapat
+        sinyaller = []
+        sonuc = surec_kapat(lambda: True, sinyaller.append,
+                            sinyaller=(15, 9), bekle=lambda s: time.sleep(0.001),
+                            sure=0.05)
+        assert sonuc is True and sinyaller == [15, 9]
+
+    def test_kapatma_iki_sinyal_arasinda_oleni_bildirir(self):
+        from backend.computer.terminal import surec_kapat
+        sinyaller = []
+        durum = {"kez": 0}
+
+        def sag_mi():
+            durum["kez"] += 1
+            return durum["kez"] < 2  # ilk yoklamada yaşıyor, sonra öldü
+
+        sonuc = surec_kapat(sag_mi, sinyaller.append, sinyaller=(15, 9),
+                            bekle=lambda s: None)
+        assert sonuc is False and sinyaller == [15]
+
+    def test_arka_uc_secimi_tek_yerde(self):
+        import os
+        from backend.computer import terminal as t
+        if os.name == "nt":
+            assert t.arka_uc_sinifi() is t._WinptyArkaUcu
+        else:
+            assert t.arka_uc_sinifi() is t._PtyArkaUcu
+
+    def test_ithalat_koruma_yayilari_dogru(self):
+        # Dikilen kural: Windows yolu pywinpty'yi, Linux yolu
+        # fcntl/termios'u koşullu ithal ediyor; biri diğerinin platformda
+        # modülü kırıyor olamaz. Bu test iki platformda da koşar.
+        import os
+        from backend.computer import terminal as t
+        if os.name == "nt":
+            assert t.winpty is not None
+            assert not hasattr(t, "fcntl")
+            assert not hasattr(t, "termios")
+        else:
+            assert t.winpty is None
+            assert hasattr(t, "fcntl") and hasattr(t, "termios")
+
+    def test_winpty_arka_ucu_spawn_argumanlari_aynen_gecirir(self):
+        from backend.computer import terminal as t
+        kayit = {}
+
+        class SahtePtyProcess:
+            @staticmethod
+            def spawn(argv, cwd=None, env=None, dimensions=None, backend=None):
+                kayit.update(argv=argv, cwd=cwd, dimensions=dimensions,
+                             backend=backend)
+                return _SahteSurec()
+
+        class SahteWinpty:
+            PtyProcess = SahtePtyProcess
+
+            class Backend:
+                ConPTY = "conpty-nisani"
+
+        t.winpty_yedek = t.winpty
+        t.winpty = SahteWinpty
+        try:
+            uc = t._WinptyArkaUcu.spawn(None, cwd="D:/x", cols=100, rows=30)
+        finally:
+            t.winpty = t.winpty_yedek
+            del t.winpty_yedek
+        assert kayit["argv"] == "powershell.exe -NoLogo -NoProfile"
+        assert kayit["cwd"] == "D:/x"
+        assert kayit["dimensions"] == (30, 100)  # winpty: (satır, sütun)
+        assert kayit["backend"] == "conpty-nisani"
+        assert isinstance(uc, t._WinptyArkaUcu)
+
+    def test_winpty_arka_ucu_baslatamazsa_terminal_hatasi(self):
+        from backend.computer import terminal as t
+
+        class Patlayan:
+            @staticmethod
+            def spawn(*a, **k):
+                raise OSError("conpty yok")
+
+        class SahteWinpty:
+            PtyProcess = Patlayan
+
+            class Backend:
+                ConPTY = "x"
+
+        t.winpty_yedek = t.winpty
+        t.winpty = SahteWinpty
+        try:
+            with pytest.raises(t.TerminalError, match="could not start"):
+                t._WinptyArkaUcu.spawn("cmd.exe", cwd=None)
+        finally:
+            t.winpty = t.winpty_yedek
+            del t.winpty_yedek
+
+    def test_winpty_arka_ucu_boyutu_satir_once_gonderir(self):
+        from backend.computer.terminal import _WinptyArkaUcu
+        sahte = _SahteSurec()
+        _WinptyArkaUcu(sahte).setwinsize(120, 40)
+        assert sahte.cagrilar == [("size", 40, 120)]
+
+    def test_winpty_arka_ucu_kapatmada_zorlar(self):
+        from backend.computer.terminal import _WinptyArkaUcu
+        sahte = _SahteSurec()
+        _WinptyArkaUcu(sahte).stop()
+        assert sahte.cagrilar == [("terminate", True)]
+
+    def test_linux_arka_ucu_olmayan_komutu_acilista_reddeder(self):
+        # Kontrol fork'tan önce: Windows'ta da koşar, gerçek pty açılmaz.
+        from backend.computer.terminal import TerminalError, _PtyArkaUcu
+        with pytest.raises(TerminalError, match="not found"):
+            _PtyArkaUcu.spawn("kesinlikle-yok-boyle-bir-program-xyz")
+
+    def test_linux_arka_ucu_olmayan_dizini_acilista_reddeder(self):
+        import sys
+        from backend.computer.terminal import TerminalError, _PtyArkaUcu
+        # Windows yolunu POSIX kuralları ters eğik çizgileri yiyor
+        # (`shlex.split("C:\\x")` -> "C:x"), o yüzden tırnaklı veriliyor:
+        # Linux'ta sys.executable tek jeton, davranış aynı.
+        argv = f'"{sys.executable}"'
+        with pytest.raises(TerminalError, match="working directory"):
+            _PtyArkaUcu.spawn(argv, cwd="/boyle-bir-dizin-yok-xyz")
+
+
+class TestTerminalSession:
+    """Oturumun iskeleti sahte arka uçla — gerçek PTY yok."""
+
+    def _oturum(self):
+        import pyte
+        from backend.computer.terminal import TerminalSession
+        sahte = _SahteSurec()
+        ekran = pyte.Screen(80, 24)
+        oturum = TerminalSession(name="t", cwd="", process=sahte,
+                                 screen=ekran, stream=pyte.Stream(ekran))
+        return oturum, sahte, ekran
+
+    def test_resize_hem_pty_ye_hem_ekrana_isler(self):
+        oturum, sahte, ekran = self._oturum()
+        oturum.resize(100, 30)
+        assert sahte.cagrilar == [("size", 100, 30)]
+        assert ekran.columns == 100 and ekran.lines == 30
+
+    def test_kapali_oturumda_resize_hata_verir(self):
+        from backend.computer.terminal import TerminalError
+        oturum, _, _ = self._oturum()
+        oturum._closed.set()
+        with pytest.raises(TerminalError, match="closed"):
+            oturum.resize(100, 30)
+
+    def test_tus_dizisi_arka_uca_yaziliyor(self):
+        oturum, sahte, _ = self._oturum()
+        oturum.send_key("up")
+        oturum.send("merhaba")
+        assert sahte.cagrilar == [("write", "\x1b[A"), ("write", "merhaba")]
+
+    def test_kapali_oturuma_gonderim_hata_verir(self):
+        from backend.computer.terminal import TerminalError
+        oturum, _, _ = self._oturum()
+        oturum._closed.set()
+        with pytest.raises(TerminalError, match="closed"):
+            oturum.send("x")
+
+    def test_olu_surecte_canlilik_yanlis(self):
+        oturum, sahte, _ = self._oturum()
+        assert oturum.alive
+        sahte.canli = False
+        assert not oturum.alive
+
+    def test_close_arka_ucu_durdurur(self):
+        oturum, sahte, _ = self._oturum()
+        oturum.close()
+        assert sahte.cagrilar == [("stop",)]
+        assert not oturum.alive
+
+
+class _SahteOturum:
+    """Kayıt defteri testleri için: PTY'siz oturum."""
+
+    def __init__(self, canli=True):
+        self.canli = canli
+        self.kapandi = False
+
+    @property
+    def alive(self):
+        return self.canli
+
+    def close(self):
+        self.kapandi = True
+
+
+class TestTerminalRegistry:
+    """Açık oturumların defteri: aynı isim, sınır, yeniden kullanım."""
+
+    @pytest.fixture(autouse=True)
+    def _sahte_acilis(self, monkeypatch):
+        from backend.computer import terminal as t
+        self.acilanlar = []
+
+        def sahte_open(name, command=None, cwd=None):
+            self.acilanlar.append((name, command, cwd))
+            return _SahteOturum()
+
+        monkeypatch.setattr(t.TerminalSession, "open", sahte_open)
+
+    def test_acilan_oturum_ismiyle_bulunuyor(self):
+        from backend.computer.terminal import TerminalRegistry
+        r = TerminalRegistry()
+        oturum = r.open("bir", command="python")
+        assert r.get("bir") is oturum
+        assert r.names() == ["bir"]
+        assert self.acilanlar == [("bir", "python", None)]
+
+    def test_ayni_isim_ikinci_kez_acilamaz(self):
+        from backend.computer.terminal import TerminalError, TerminalRegistry
+        r = TerminalRegistry()
+        r.open("bir")
+        with pytest.raises(TerminalError, match="already open"):
+            r.open("bir")
+
+    def test_olen_oturumun_ismi_yeniden_kullanilabilir(self):
+        # Aynı ismi açıkça kapatmadan da ölü oturumun yerine geçilebilir;
+        # dispatch bunu bir oturum "kapandı" sandığında istiyor.
+        from backend.computer.terminal import TerminalRegistry
+        r = TerminalRegistry()
+        eski = r.open("bir")
+        eski.canli = False
+        yeni = r.open("bir")
+        assert r.get("bir") is yeni
+
+    def test_olmayan_oturum_acik_hata_verir(self):
+        from backend.computer.terminal import TerminalError, TerminalRegistry
+        r = TerminalRegistry()
+        with pytest.raises(TerminalError, match="There is no session"):
+            r.get("yok")
+
+    def test_kapatma_defterden_dusurur(self):
+        from backend.computer.terminal import TerminalError, TerminalRegistry
+        r = TerminalRegistry()
+        oturum = r.open("bir")
+        r.close("bir")
+        assert oturum.kapandi and r.names() == []
+        with pytest.raises(TerminalError, match="no session"):
+            r.close("bir")
+
+    def test_sinir_asilinca_olu_oturum_toplanir(self):
+        from backend.computer.terminal import TerminalRegistry
+        r = TerminalRegistry()
+        for i in range(TerminalRegistry.MAX_SESSIONS):
+            s = r.open(f"o{i}")
+            if i == 0:
+                s.canli = False  # biri ölmüş: yer açılmalı
+        yeni = r.open("yeni")
+        assert yeni in r._sessions.values()
+        assert "o0" not in r.names()
+
+    def test_sinir_asilinca_acik_hata(self):
+        from backend.computer.terminal import TerminalError, TerminalRegistry
+        r = TerminalRegistry()
+        for i in range(TerminalRegistry.MAX_SESSIONS):
+            r.open(f"o{i}")
+        with pytest.raises(TerminalError, match="At most"):
+            r.open("fazla")
+
+    def test_close_all_hepsini_kapatir(self):
+        from backend.computer.terminal import TerminalRegistry
+        r = TerminalRegistry()
+        acilanlar = [r.open(f"o{i}") for i in range(3)]
+        r.close_all()
+        assert all(o.kapandi for o in acilanlar)
+        assert r.names() == []
+
+
 class TestLedger:
     """Gerekçe defteri — bu ofisin ayırt edici parçası."""
 

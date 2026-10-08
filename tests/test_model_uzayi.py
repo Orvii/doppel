@@ -350,11 +350,17 @@ class TestTekKaynak:
 
     def test_resize_tek_yerde(self):
         # Yeniden örnekleme yalnızca `capture.Frame.model_gorsel` içinde.
+        # Ölçüt "`.resize(` geçen dosya" değil, yeniden örnekleyen çağrı:
+        # `terminal.py`nin `screen.resize`ı pyte ekran tamponunun boyutunu
+        # değiştiriyor, ortada ölçek yok — tıklama kaydırmasıyla ilgisi
+        # olmayan, yalnızca adı benzeyen başka bir işlem. Korunan özellik
+        # aynı: ikinci bir *yeniden örnekleme* eklenirse bu test kırmızı.
         kok, dosyalar = self._kaynaklar()
         yerler = [
             p.relative_to(kok).as_posix()
             for p in dosyalar
-            if ".resize(" in p.read_text(encoding="utf-8")
+            if any("resize(" in satir and "Resampling" in satir
+                   for satir in p.read_text(encoding="utf-8").splitlines())
         ]
         assert yerler == ["backend/computer/capture.py"]
 
