@@ -58,7 +58,11 @@ def _veri_dizinleri(ortam: dict[str, str] | None = None) -> list[Path]:
     veri_evi = ortam.get("XDG_DATA_HOME") or (str(Path(ev) / ".local/share") if ev else "")
     if veri_evi:
         kokler.append(veri_evi)
-    kokler += (ortam.get("XDG_DATA_DIRS") or _XDG_VARSAYILAN_DATA).split(":")
+    # Ayırıcı `os.pathsep`: gerçek Linux'ta bu zaten ":" (XDG standardı),
+    # ama Windows'ta simülasyon koşarken test yolları `C:\...` içeriyor ve
+    # sabit ":" sürücü harfini ortadan bölüyordu (`['C', '\\Users\\...']`).
+    # Platform kendi ayırıcısını söyler; Linux davranışı bit-bit aynı kalır.
+    kokler += (ortam.get("XDG_DATA_DIRS") or _XDG_VARSAYILAN_DATA).split(os.pathsep)
 
     gorulen: set[Path] = set()
     out: list[Path] = []
