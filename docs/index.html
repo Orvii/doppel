@@ -56,32 +56,30 @@
 
 <main>
 
-  <!-- 01 · Kahraman: başlık solda, gerçek ürün ekranı sağda, numaralı çağrılar -->
+  <!-- 01 · Kahraman: ortalanmış başlık, altında tam genişlik gerçek ürün ekranı -->
   <section class="hero">
-    <div class="wrap hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow">Desktop agent &middot; Windows 11 &amp; Linux</p>
-        <h1>Your cursor stays <em>yours</em>.<br>The work goes to its desk.</h1>
-        <p class="sub">Doppel is a Claude computer-use agent with its own desktop and its own cursor. It clicks, types and reads UI on an invisible desk — or drives yours without ever moving the pointer — while you keep working.</p>
-        <div class="cta-row">
-          <a class="btn btn-solid" href="https://github.com/Orvii/doppel">Clone on GitHub</a>
-          <a class="btn btn-text" href="#how">See how it works &rarr;</a>
-        </div>
-        <p class="install-note">MIT &middot; Python + PySide6 &middot; one dependency outside the Anthropic SDK: it ships its own office</p>
+    <div class="wrap hero-copy">
+      <p class="eyebrow">Desktop agent &middot; Windows 11 &amp; Linux</p>
+      <h1>Your cursor stays <em>yours</em>.<br>The work goes to its desk.</h1>
+      <p class="sub">Doppel is a Claude computer-use agent with its own desktop and its own cursor. It clicks, types and reads UI on an invisible desk — or drives yours without ever moving the pointer — while you keep working.</p>
+      <div class="cta-row">
+        <a class="btn btn-solid" href="https://github.com/Orvii/doppel">Clone on GitHub</a>
+        <a class="btn btn-text" href="#how">See how it works &rarr;</a>
       </div>
-      <div class="hero-shot">
-        <figure class="shot shot-hero">
-          <img src="assets/hero.png" width="1580" height="840" alt="Doppel's app: an activity list of real agent steps beside the floating command bar and run counters.">
-          <span class="callout c1" aria-hidden="true">1</span>
-          <span class="callout c2" aria-hidden="true">2</span>
-          <span class="callout c3" aria-hidden="true">3</span>
-        </figure>
-        <ol class="legend">
-          <li><b>1</b> Every step it takes, in order</li>
-          <li><b>2</b> The bar: type, Dry-run, stop</li>
-          <li><b>3</b> Steps, unsaved files, terminals</li>
-        </ol>
-      </div>
+      <p class="install-note">MIT &middot; Python + PySide6 &middot; one dependency outside the Anthropic SDK: it ships its own office</p>
+    </div>
+    <div class="hero-bleed hero-shot">
+      <figure class="shot shot-hero">
+        <img src="assets/hero.png" width="1580" height="840" alt="Doppel's app, full frame: the activity list of real agent steps — reading CSVs, opening and editing a spreadsheet — beside the floating command bar and the run counters.">
+        <span class="callout c1" aria-hidden="true">1</span>
+        <span class="callout c2" aria-hidden="true">2</span>
+        <span class="callout c3" aria-hidden="true">3</span>
+      </figure>
+      <ol class="legend wrap">
+        <li><b>1</b> Every step it takes, in order</li>
+        <li><b>2</b> The bar: type, Dry-run, stop</li>
+        <li><b>3</b> Steps, unsaved files, terminals</li>
+      </ol>
     </div>
   </section>
 
@@ -107,22 +105,22 @@
           <p>The <code>side_*</code> tools open an invisible desktop with a cursor of their own. Filling forms, walking a multi-page flow, collecting data — it happens there, at full speed, while the desk you're looking at doesn't so much as twitch.</p>
           <p class="fine">On Windows the desk is a real hidden desktop object; on Linux it's a real second X display. Anything you must witness stays on your desk — and it knows the difference.</p>
         </div>
-        <figure class="shot">
+        <figure class="shot shot-native">
           <img src="assets/command-bar.png" width="512" height="257" alt="The floating command bar: status line, step trail, microphone, input field, Dry-run toggle and stop button.">
           <figcaption>The bar floats over your work. Dry-run plans without executing; the stop button ends the run mid-click.</figcaption>
         </figure>
       </div>
 
-      <div class="feature reveal rev">
+      <div class="feature-break reveal">
         <div class="feature-copy">
           <p class="label">Record</p>
           <h3>Every step is written down while it happens</h3>
           <p>Each run leaves a JSONL audit in <code>runs/</code>: which tool, what it ran on, whether it failed — and for document edits, a mandatory <code>why</code>. When the agent claims it did something, the claim is checked against that record, not against its own summary.</p>
-          <p class="fine">The screenshot is a real run — reading desktop CSVs into a sheet, then writing <code>Sheet1!B6&nbsp;=&nbsp;=SUM(B2:B5)</code> — not a mock.</p>
+          <p class="fine">The screenshot is a real run — reading desktop CSVs into a sheet, then writing <code>Sheet1!B6&nbsp;=&nbsp;=SUM(B2:B5)</code> — not a mock. Shown at capture resolution.</p>
         </div>
-        <figure class="shot">
-          <img src="assets/run-list.png" width="960" height="705" alt="Activity list: You — read the CSVs on my desktop; Listing a folder; Reading a file with parsed values; Opening and editing a spreadsheet document.">
-          <figcaption>Concrete at every line: four CSVs found, values read, the formula written.</figcaption>
+        <figure class="shot shot-full">
+          <img src="assets/steps.png" width="1062" height="332" alt="Activity list at full resolution: You — read the CSVs on my desktop; Listing a folder, 4 of them .csv; Reading a file with values Rent:12000 / Electricity:1850 / Internet:640 / Groceries:4200; Opening budget.xlsx; Editing Sheet1!B6 = =SUM(B2:B5).">
+          <figcaption>Four CSVs found, values parsed, the formula written — legible, because it's the real frame at its own size.</figcaption>
         </figure>
       </div>
 
@@ -133,8 +131,8 @@
           <p>Irreversible clicks — Send, Delete, Buy, Submit, in any window, by any tool — wait for you. The approval hook defaults to deny when nothing is there to answer. Dry-run is an allowlist: a tool it has never seen is blocked by default, not trusted by default.</p>
           <p class="fine">Recorded workflows replay only while their signature still matches; the moment a screen differs, playback halts instead of improvising.</p>
         </div>
-        <figure class="shot">
-          <img src="assets/status-bar.png" width="1580" height="77" alt="Status bar: Working, the current instruction, and counters for steps, unsaved files and terminals.">
+        <figure class="shot shot-native">
+          <img src="assets/counters.png" width="380" height="75" alt="Run counters: 4 steps, 1 unsaved, 0 terminals, with Server and Stop buttons.">
           <figcaption>“1 unsaved” is a fact you can act on before the run ends — not a surprise after.</figcaption>
         </figure>
       </div>

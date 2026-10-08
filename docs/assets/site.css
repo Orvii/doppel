@@ -80,12 +80,7 @@ code {
 /* ---------- Kahraman ---------- */
 
 .hero { padding: 92px 0 84px; }
-.hero-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
-  gap: 64px;
-  align-items: center;
-}
+.hero-copy { max-width: 760px; }
 .eyebrow {
   margin: 0 0 18px;
   font-size: 13px; font-weight: 560; letter-spacing: 0.08em; text-transform: uppercase;
@@ -95,7 +90,7 @@ code {
 .hero h1 em, .closing-line em {
   font-family: var(--serif); font-style: italic; font-weight: 400; letter-spacing: 0;
 }
-.hero .sub { margin: 22px 0 0; max-width: 54ch; font-size: 19px; color: var(--muted); }
+.hero .sub { margin: 22px 0 0; max-width: 62ch; font-size: 19px; color: var(--muted); }
 
 .cta-row { display: flex; gap: 14px; align-items: center; margin-top: 30px; flex-wrap: wrap; }
 .btn {
@@ -108,7 +103,12 @@ code {
 .btn-text:hover { text-decoration: none; color: var(--brand-hover); }
 .install-note { margin: 26px 0 0; font-size: 13.5px; color: var(--faint); }
 
-.hero-shot .shot { margin: 0; position: relative; }
+/* Kahraman görseli tam genişlikte (kenardan kenara) durur: 1580px'lik kare
+   1440px ekranda yalnızca ~0.91x küçülür, UI metni okunur kalır. Dar
+   sütunlara sığdırmak onu 0.3x'e indirip okunamaz yapıyordu — bu sitenin
+   tek ciddi hatasıydı, düzeltildi. */
+.hero-bleed { max-width: 1580px; margin: 56px auto 0; }
+.hero-bleed .shot { margin: 0; position: relative; }
 .shot { margin: 0; }
 .shot img {
   display: block; width: 100%; height: auto;
@@ -116,17 +116,23 @@ code {
   border-radius: var(--r-lg);
   box-shadow: 0 1px 2px rgba(6,12,14,.05), 0 12px 32px -12px rgba(6,12,14,.18);
 }
-.hero-shot .shot img { border-radius: var(--r-lg); }
+/* Doğal çözünürlükte gösterilen kırpımlar: siteye göre küçültülmez,
+   çünkü küçültme bu ürünün metnini okunamaz hale getiriyordu. */
+.shot-native img {
+  width: auto; max-width: 100%; height: auto;
+  border-radius: var(--r-md);
+}
 
 .callout {
-  position: absolute; width: 26px; height: 26px; border-radius: 50%;
+  position: absolute; width: 30px; height: 30px; border-radius: 50%;
   background: var(--brand); color: var(--on-brand);
-  font-size: 13px; font-weight: 620; display: flex; align-items: center; justify-content: center;
-  border: 2px solid var(--bg);
+  font-size: 15px; font-weight: 620; display: flex; align-items: center; justify-content: center;
+  border: 3px solid var(--bg);
+  box-shadow: 0 2px 8px rgba(6,12,14,.25);
 }
-.c1 { left: 20%; top: 18%; }
-.c2 { left: 74%; top: 72%; }
-.c3 { left: 80%; top: 93%; }
+.c1 { left: 12%; top: 19%; }   /* adım listesi */
+.c2 { left: 78%; top: 70%; }   /* komut çubuğu balonu */
+.c3 { left: 82%; top: 91%; }   /* sayaçlar */
 
 .legend { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 7px; font-size: 13.5px; color: var(--muted); }
 .legend li { display: flex; gap: 9px; align-items: baseline; }
@@ -161,6 +167,18 @@ code {
 }
 .feature.rev .feature-copy { order: 2; }
 .feature.rev .shot { order: 1; }
+
+/* Tam genişlik "kırıcı" blok: metin ortada dar, görsel altında tam ölçüde.
+   Kayıt görseli 1:1 durur — okunurluk bu bölümün bütün amacı. */
+.feature-break { padding: 40px 0 56px; }
+.feature-break .feature-copy { max-width: 760px; }
+.feature-break .shot-full { margin: 34px 0 0; }
+.shot-full img {
+  display: block; width: 100%; max-width: 1062px; height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: 0 1px 2px rgba(6,12,14,.05), 0 12px 32px -12px rgba(6,12,14,.18);
+}
 .feature-copy .label {
   margin: 0 0 10px; font-size: 12.5px; font-weight: 600; letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--brand);
@@ -267,7 +285,7 @@ figcaption { margin-top: 14px; font-size: 13.5px; color: var(--faint); max-width
 /* ---------- Duyarlı ---------- */
 
 @media (max-width: 980px) {
-  .hero-grid { grid-template-columns: 1fr; gap: 44px; }
+  .hero-bleed { margin-top: 44px; }
   .proof-row { grid-template-columns: repeat(2, 1fr); }
   .stat:nth-child(3) { border-left: none; }
   .feature { grid-template-columns: 1fr; gap: 30px; }
@@ -288,6 +306,14 @@ figcaption { margin-top: 14px; font-size: 13.5px; color: var(--faint); max-width
   .top nav { gap: 18px; font-size: 14px; }
   .top nav a:not(.nav-gh) { display: none; }
   .hero { padding: 60px 0 56px; }
+  /* Dar ekranda ürün görselleri okunamayacak kadar küçülmesin: doğal
+     boyutunda kalır, yatay kaydırılır. Metin okunur, kullanıcı kaydırır. */
+  .shot-full, .feature .shot { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .shot-full img, .shot-native img { width: auto; max-width: none; }
+  /* Kahraman da mobilde kendi adım metnini okutmalı: kendi belgesi
+     genişliğinde kalsın, kırpılmasın. */
+  .hero-bleed { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .hero-bleed img { width: 1580px; max-width: none; }
   .proof-row { grid-template-columns: 1fr; }
   .stat, .stat:first-child { border-left: none; border-top: 1px solid var(--border); padding: 22px 0; }
   .stat:first-child { border-top: none; }
