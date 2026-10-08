@@ -164,27 +164,6 @@ def acilis_etiketi() -> str:
     return "Start with Windows" if WINDOWS else "Start at login"
 
 
-def dpi_farkindaligi() -> None:
-    """Süreci monitör başına DPI farkındalığına alır — Windows'ta.
-
-    Gerekçe Windows'a özgü: ajan **aynı süreçten** ekran yakalayıp
-    koordinat hesaplıyor ve Windows ölçeklerse yakalanan kare ile
-    tıklanan nokta birbirini tutmuyor. Linux'ta ölçeklemeyi Qt ve
-    masaüstü ortamı yürütüyor; süreç düzeyinde yapılacak bir şey yok,
-    o yüzden burada hiçbir şey yapılmıyor.
-    """
-    if not WINDOWS:
-        return
-    import ctypes
-
-    dpi_baglami = ctypes.c_void_p(-4)
-    try:
-        ctypes.windll.user32.SetProcessDpiAwarenessContext(dpi_baglami)
-    except (AttributeError, OSError):
-        # Windows 8.1–10 1607 öncesi: eski API.
-        ctypes.windll.shcore.SetProcessDpiAwareness(2)
-
-
 def dosya_ac(yol: Path) -> None:
     """Dosyayı sistemin görüntüleyicisiyle açar.
 

@@ -27,13 +27,6 @@ import pytest
 from app import isletim
 
 
-@pytest.fixture()
-def linux(monkeypatch):
-    """Bu süreçte Linux dalını açar. Windows'a özel adlar sahtelenmez —
-    çağrılmayacaklar; çağrılırsa test patlar ve guard'ın sızdığı görülür."""
-    monkeypatch.setattr(isletim, "WINDOWS", False)
-
-
 class TestMetinler:
     def test_etiket_platforma_gore(self, monkeypatch):
         monkeypatch.setattr(isletim, "WINDOWS", False)
@@ -78,9 +71,20 @@ class TestQtTema:
         ), f"geçersiz renk: {renk!r}"
 
     def test_yazi_tipi_linux_sistemden(self, qt_app, monkeypatch):
+        # Linux dalı uygulamanın yüzünü okuyor: kendi koyduğumuz bir yüz
+        # aynen dönmeli. Sabit bir yüze "eşit değil" demek sıraya bağlı
+        # kırılıyordu — oturumdaki QApplication'ı daha önce koşan bir test
+        # `fluent.apply` ile kurmuş olabiliyor ve okunan yüz o zaman
+        # Windows'un yüzü oluyor. Ölçülen şey okuma yolunun kendisi.
+        from PySide6.QtGui import QFont
+
         monkeypatch.setattr(isletim, "WINDOWS", False)
-        yuz = isletim.yazi_tipi()
-        assert yuz and yuz != "Segoe UI Variable Text"
+        onceki = qt_app.font()
+        qt_app.setFont(QFont("Test Sans", 10))
+        try:
+            assert isletim.yazi_tipi() == "Test Sans"
+        finally:
+            qt_app.setFont(onceki)
         assert isletim.mono_yazi_tipi() != "Cascadia Mono"
 
 
@@ -100,6 +104,41 @@ class TestSaydamlik:
         monkeypatch.setattr(isletim, "WINDOWS", False)
         monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
         assert isletim.saydam_zemin_destekli() is False
+
+    def test_bestecisiz_cubuk_sade_zemine_dusuyor(self, qt_app, monkeypatch):
+        """Besteci yoksa çubuğun çevresi siyah değil, uygulamanın zemini.
+
+        Karar tek başına yetmiyor: `WA_TranslucentBackground` konmayınca
+        pencerenin boyanmayan payını Qt siyah bırakıyordu — karar doğru,
+        sonuç yine siyah kutu olurdu. Boyanan piksele bakılıyor.
+        """
+        from PySide6.QtWidgets import QApplication
+
+        from app.commandbar import CommandBar
+        from app.fluent import Tokens
+
+        monkeypatch.setattr(isletim, "saydam_zemin_destekli", lambda: False)
+        t = Tokens(
+            dark=True, background="#202020", background_secondary="#1c1c1c",
+            layer="#2a2a2a", card="#2b2b2b", card_hover="#2f2f2f",
+            control="#2d2d2d", control_hover="#2f2f2f",
+            control_pressed="#282828", subtle_hover="#2d2d2d",
+            stroke="#313131", divider="#353535", control_stroke="#313131",
+            text="#ffffff", text_secondary="#c8c8c8", text_tertiary="#8a8a8a",
+            text_disabled="#5c5c5c", accent="#4cc2ff", accent_hover="#0091f8",
+            accent_text="#4cc2ff", on_accent="#000000", critical="#ff99a4",
+            caution="#fce100", success="#6ccb5f",
+        )
+        bar = CommandBar(t)
+        bar.show()
+        QApplication.processEvents()
+        try:
+            resim = bar.grab().toImage()
+            kose = resim.pixelColor(0, 0)
+            assert kose.alpha() == 255, "çubuğun payı boyanmıyor"
+            assert kose.name() != "#000000", "siyah kutu: pay boyanmadı"
+        finally:
+            bar.close()
 
 
 class TestDosyaAc:

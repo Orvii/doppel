@@ -86,6 +86,11 @@ class SahteWinreg:
 
 @pytest.fixture()
 def kayit(monkeypatch):
+    # Windows dalı **gerçekten** Windows varsayılıyor: aksi hâlde Linux'ta
+    # `acik()`/`ac()`/`kapat()` XDG dalına gider ve bu testler kayıt
+    # defterini hiç sınamamış olurdu. Sabitlemek, hangi dalın ölçüldüğünü
+    # koşulan makineye bırakmıyor.
+    monkeypatch.setattr(isletim, "WINDOWS", True)
     sahte = SahteWinreg()
     monkeypatch.setattr(baslangic, "winreg", sahte)
     return sahte
@@ -117,7 +122,11 @@ class TestKomut:
 
     def test_pythonw_ve_doppel_yollari(self):
         k = baslangic.komut()
-        assert "pythonw.exe" in k.lower()
+        if isletim.WINDOWS:
+            # Konsolsuz başlatma Windows'a özgü; komut Linux'ta hiç
+            # yazılmıyor (XDG girdisi `Doppel.sh` gösteriyor), o yüzden
+            # bu iddia yalnızca Windows'ta anlamlı.
+            assert "pythonw.exe" in k.lower()
         betik = Path(__file__).resolve().parent.parent / "doppel.py"
         assert betik.exists(), "doppel.py deponun kökünde değil"
         assert str(betik) in k

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import pytest
 
+from app import isletim
 from app import kisayol as kisayol_mod
 
 
@@ -188,6 +189,11 @@ class TestTepsi:
         assert tepsi._baslangic.isChecked()
 
 
+@pytest.mark.skipif(
+    not isletim.WINDOWS,
+    reason="global shortcut registration is a Windows feature; on Linux "
+    "the honest behaviour is 'not available', asserted below",
+)
 class TestKisayol:
     #: Ctrl+Shift+Alt+F13 — hiçbir yerde kullanılmıyor.
     SERBEST = (
@@ -250,3 +256,28 @@ class TestKisayol:
         k.start()
         k.stop()
         k.stop()
+
+
+class TestKisayolLinux:
+    """Linux'ta kayıt **yok** — ve bu sessizce yutulmuyor.
+
+    `RegisterHotKey` bir Win32 kavramı; X11/Wayland karşılığı masaüstüne
+    göre değişiyor ve uydurma bir yakalama denenmiyor. Sınanan şey dürüst
+    bozulma: `kayitli` False, `hata` sebebi söylüyor ve hiçbir iş
+    parçacığı açılmıyor. Bu iddialar her platformda koşar (dal anahtarla
+    çevriliyor), yani Linux CI'da da kanıt var.
+    """
+
+    def test_kur_kayitsiz_ama_sebebi_soyluyor(self, qt_app, monkeypatch):
+        monkeypatch.setattr(isletim, "WINDOWS", False)
+        k = kisayol_mod.kur()
+        assert not k.kayitli
+        assert "not available" in k.hata
+        assert k._thread is None, "Linux'ta iş parçacığı açılmamalı"
+
+    def test_adaylar_denenmiyor(self, qt_app, monkeypatch):
+        # Hepsi dolu cümlesi Linux'ta yanlış olurdu: hiçbiri denenemez.
+        monkeypatch.setattr(isletim, "WINDOWS", False)
+        k = kisayol_mod.kur()
+        assert "already taken" not in k.hata
+        assert "could not be registered" not in k.hata
