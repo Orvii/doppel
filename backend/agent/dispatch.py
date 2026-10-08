@@ -76,6 +76,55 @@ class ToolOutcome:
     dogrulama: str | None = None
 
 
+def _acici_bayraklari() -> dict[str, Any]:
+    """`Popen` için "pencere açma" bayrağı: Windows'ta var, Linux'ta yok.
+
+    Varlık yoklaması, `sys.platform` dalı değil: bayrak yoksa hiç
+    geçilmiyor (Linux'ta ayrı süreç konsola bağlanmıyor zaten).
+    """
+    bayrak = getattr(subprocess, "CREATE_NO_WINDOW", None)
+    return {"creationflags": bayrak} if bayrak is not None else {}
+
+
+def _on_plan_okunur() -> tuple[str, bool]:
+    """`(başlık, izlenebilir)` — ön plan okunamayan oturumda başlık boş.
+
+    Wayland/ekransızda pencere yönetimi hiç yok; `launch_app` orada
+    "öne gelmedi" hükmünü veremez (veremeyeceği bir gözlemi rapor etmiş
+    olurdu). İkinci alan çağırana bunu söylüyor.
+    """
+    try:
+        return win.foreground_title(), True
+    except win.PencereYonetimiYokHatasi:
+        return "", False
+
+
+def _kabuk_argv(command: str) -> list[str]:
+    """Kabuk komutunu çalıştıracak argv. Windows PowerShell, Linux `$SHELL`/sh.
+
+    Komut metni argv'nin tek üyesi olarak gidiyor (kabuk içinde yorumlanır
+    — `run_shell` sözleşmesi bu); kabuk yokluğu `KomutYokHatasi`ya değil,
+    `subprocess`ın kendi `FileNotFoundError`ına düşer ve o hata
+    `_do_run_shell`ın `OSError` yakalayıcısında modele söylenir.
+    """
+    from ..computer import erisim
+
+    if erisim.oturum().tur == "windows":
+        return ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command]
+    return ["/bin/sh", "-c", command]
+
+
+def _varsayila_acici(url: str) -> None:
+    """URL'yi sistemin varsayılan tarayıcısıyla açar. Windows `os.startfile`,
+    Linux `xdg-open` — seçim `erisim`e soruluyor, platform dalı orada yaşar."""
+    from ..computer import erisim
+
+    if erisim.oturum().tur == "windows":
+        os.startfile(url)
+        return
+    subprocess.Popen(["xdg-open", url], **_acici_bayraklari())
+
+
 def _image_block(data: bytes, media_type: str) -> list[dict[str, Any]]:
     return [
         {
@@ -950,10 +999,10 @@ class Dispatcher:
             raise ToolError("launch_app needs target")
         arguments = str(payload.get("arguments", "")).strip()
 
-        before = win.foreground_title()
+        before, izlenebilir = _on_plan_okunur()
         try:
             if target.startswith(("http://", "https://")):
-                os.startfile(target)
+                _varsayila_acici(target)
                 expect = None
             else:
                 # Önce PATH, sonra kurulu uygulamalar kataloğu. Windows'ta
@@ -977,18 +1026,20 @@ class Dispatcher:
                     argv = apps.launch_argv(app)
                     subprocess.Popen(
                         argv + ([arguments] if arguments else []),
-                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        **_acici_bayraklari(),
                     )
                     # Kısayol ve mağaza girdileri explorer üzerinden
                     # açılıyor; öne gelecek pencere explorer değil, o yüzden
-                    # süreç adına göre bekleme yapılamıyor.
+                    # süreç adına göre bekleme yapılamıyor. Linux'ta da
+                    # `.desktop` Exec'i ara bir program (gtk-launch) olabilir;
+                    # aynı gerekçe orada da geçerli.
                     expect = None
                 else:
                     resolved = yol or target
                     subprocess.Popen(
                         f'"{resolved}" {arguments}'.strip(),
                         shell=True,
-                        creationflags=subprocess.CREATE_NO_WINDOW,
+                        **_acici_bayraklari(),
                     )
                     expect = os.path.basename(resolved)
         except OSError as exc:
@@ -996,6 +1047,16 @@ class Dispatcher:
 
         # Öne gelmesini bekle. Gelmezse modele söyle — sessizce devam edip
         # yanlış pencereye yazmak Faz 1'de tam olarak bu şekilde patlamıştı.
+        # Ön plan okunamayan oturumda (Wayland) bu izleme yapılamıyor:
+        # "açılmadı" demek yalan olurdu; ne bilindiği söyleniyor.
+        if not izlenebilir:
+            return ToolOutcome(
+                content=(
+                    f"{target} was launched, but this session cannot report "
+                    "which window has focus (no window-management support). "
+                    "Take a screenshot to see what happened."
+                )
+            )
         appeared = self._wait_for_new_foreground(before, expect)
         now = win.foreground_title()
         if not appeared:
@@ -1043,13 +1104,13 @@ class Dispatcher:
 
         try:
             completed = subprocess.run(
-                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", command],
+                _kabuk_argv(command),
                 capture_output=True,
                 timeout=timeout,
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                creationflags=subprocess.CREATE_NO_WINDOW,
+                **_acici_bayraklari(),
             )
         except subprocess.TimeoutExpired:
             raise ToolError(

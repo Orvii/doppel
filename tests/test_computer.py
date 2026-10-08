@@ -6,6 +6,7 @@ doğrulanıyor — burada yalnızca koordinat matematiği ve tuş çözümlemesi
 """
 
 import re
+import sys
 
 import pytest
 
@@ -459,6 +460,91 @@ class TestDispatcherGate:
         with pytest.raises(Denied):
             d.run("office_save", {"name": "belge", "path": str(hedef)})
         assert hedef.read_bytes() == b"eski i\xc3\xa7erik"
+
+
+class TestLaunchAppLinux:
+    """`launch_app` yolunun platform parçaları — sahte Popen'la, sahte oturumla.
+
+    Windows'ta koşarken Linux yolu sahteleniyor: `creationflags` bayrağı
+    olmayan bir `subprocess` taklidi ve `xdg-open`, kırılmanın gerçekten
+    yakalanacağı yerdir (bu satırlar bir kez `sys.platform` varsayımıyla
+    yazılmıştı ve Linux'ta AttributeError verirdi).
+    """
+
+    def _dispatcher(self):
+        from backend.agent.dispatch import Dispatcher
+        from backend.safety.killswitch import KillSwitch
+
+        return Dispatcher(DisplayMap([PRIMARY]), capture=None, kill=KillSwitch())
+
+    def _linux_oturumu(self, monkeypatch):
+        import backend.agent.dispatch as dispatch_mod
+        from backend.computer import erisim
+
+        monkeypatch.setattr(sys, "platform", "linux")
+        monkeypatch.setenv("DISPLAY", ":99")
+        monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+        # Pencere yönetimi sahte: xprop wmctrl çağrılarına girmesin.
+        monkeypatch.setattr(dispatch_mod.win, "foreground_title", lambda: "On Pencere")
+        monkeypatch.setattr(
+            dispatch_mod.win, "matches_foreground", lambda p, t: True
+        )
+        monkeypatch.setattr(
+            erisim, "oturum", lambda ortam=None: erisim.Oturum(
+                "x11", ":99", None, None
+            )
+        )
+        # Ön plan izlemesi kısa yoldan hedefte: kanıtlanan şey bekleme
+        # süresi değil, argv ve `creationflags` seçimi.
+        from backend.agent.dispatch import Dispatcher
+
+        monkeypatch.setattr(
+            Dispatcher, "_wait_for_new_foreground",
+            lambda self, before, expect, timeout=10.0: True,
+        )
+
+    def test_bayrak_yoksa_popen_dusmez(self, monkeypatch):
+        """`creationflags` subprocess'ta yoksa da `launch_app` çalışmalı."""
+        import backend.agent.dispatch as dispatch_mod
+
+        self._linux_oturumu(monkeypatch)
+        monkeypatch.setattr(dispatch_mod.subprocess, "CREATE_NO_WINDOW", None,
+                            raising=False)
+        cagrilar = []
+        monkeypatch.setattr(
+            dispatch_mod.subprocess, "Popen",
+            lambda argv, **kw: cagrilar.append((argv, kw)),
+        )
+        d = self._dispatcher()
+        outcome = d.run("launch_app", {"target": "http://x.invalid"})
+        assert cagrilar and cagrilar[0][0] == ["xdg-open", "http://x.invalid"]
+        assert "creationflags" not in cagrilar[0][1]
+        assert "http://x.invalid" in outcome.content
+
+    def test_bayrak_varsa_gecirilir(self, monkeypatch):
+        import backend.agent.dispatch as dispatch_mod
+
+        self._linux_oturumu(monkeypatch)
+        cagrilar = []
+        monkeypatch.setattr(
+            dispatch_mod.subprocess, "Popen",
+            lambda argv, **kw: cagrilar.append((argv, kw)),
+        )
+        d = self._dispatcher()
+        d.run("launch_app", {"target": "http://x.invalid"})
+        if hasattr(dispatch_mod.subprocess, "CREATE_NO_WINDOW"):
+            assert "creationflags" in cagrilar[0][1]
+
+    def test_kabuk_argv_linux(self, monkeypatch):
+        import backend.agent.dispatch as dispatch_mod
+        from backend.computer import erisim
+
+        monkeypatch.setattr(
+            erisim, "oturum", lambda ortam=None: erisim.Oturum(
+                "x11", ":99", None, None
+            )
+        )
+        assert dispatch_mod._kabuk_argv("ls -l") == ["/bin/sh", "-c", "ls -l"]
 
 
 class TestFiles:
