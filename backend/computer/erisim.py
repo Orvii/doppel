@@ -1,221 +1,332 @@
-"""Erişilebilirlik ağacından model okunur metin — platformdan bağımsız çekirdek.
+"""Erişim katmanı — hangi oturumdayız ve hangi araçlar gerçekten çalışıyor.
 
-Windows arka ucu UIA'dır (`uia.py`), Linux arka ucu AT-SPI2'dir
-(`uia_linux.py`). İkisi de AYNI disiplini kullanmak zorunda: ilgi çeken
-denetim türleri (`INTERESTING`), derinlik ve düğüm tavanı, gizli ya da
-daraltılmış denetimin atlanması, ekran dışı süzgeci ve "ince ağaç" eşiği.
-Bu disiplini iki dosyaya kopyalasaydık biri güncellenip öteki unutulurdu;
-bu depoda yanlış ikizlenmiş mantık birkaç kez gerçek hata üretti. O yüzden
-gezinme ve biçimlendirme burada TEK kez yazılı; arka uçlar yalnızca aşağıdaki
-`Dugum` arayüzünü uyarlar.
+Tüm platform dallanması burada. `input.py`, `displays.py`, `capture.py` ve
+`killswitch.py` yalnızca buraya sorar; `if sys.platform` başka hiçbir dosyada
+yaşamaz. Tek istisna bu modülün kendisi.
 
-Çıktı dikdörtgen değil **merkez noktası** veriyor. Modelin istediği şey "bu
-düğme nerede" değil, "nereye tıklayayım"; erişilebilirlik katmanı denetimin
-dikdörtgenini zaten biliyor, ölçüm tahminden iyidir.
+## Neden yetenek, platform değil
 
-`Etiket` güvenlik kapısının gördüğü cevaptır ve iki durumu birbirinden
-ayırır: okunabilen bir etiket (boş bile olsa "burada etiket yok" demektir)
-ile hiç okunamayan bir etiket (`okunabilir=False`). Bu ayrım kaybolursa kapı
-"okuyamadım"ı "riskli değil" sayar — sessiz SAFE tam olarak budur.
+"Linux'ta XTEST vardır" yanlış bir cümle. Wayland oturumunda XWayland
+üzerinden gelen bir `DISPLAY` de var — ve `xdotool` orada **sessizce yarım
+çalışır**: imleci oynatır, tıklama yerel (Wayland) pencereye hiç ulaşmaz.
+Bu depoda sessizce yanlış iş yapan yol, çalışmayan yoldan kötüdür. Bu yüzden
+seçim sırayla soruyor: hangi oturum, araç PATH'te mi, araç o oturumda
+gerçekten cevap veriyor mu.
+
+Seçim sırası (girdi):
+
+1. `xdotool` — yalnızca X11 oturumunda ve `getdisplaygeometry` cevap
+   verdikten sonra. XTEST kısıtı yalnızca Wayland içindir.
+2. `ydotool` — çekirdek uinput; X11'de de Wayland'de de çalışır. İkili
+   dosya **ve** daemon soketi bekliyor. Udev kuralı (paketleme/README'ye
+   ait, burada yalnızca hatırlatma): `KERNEL=="uinput", GROUP="input",
+   MODE="0660"` ve kullanıcı `input` grubunda olmalı — yoksa ydotool
+   bağlanır ama olay gönderemez.
+3. Kayıtlı sürücüler — `surucu_kaydet()` ile gelenler. XDG portal arka
+   ucu (port/wayland) buraya `musait()` fonksiyonu + sınıfıyla kaydolur;
+   bu modül portal dosyalarını hiç bilmez.
+
+Wayland oturumunda `xdotool` **hiç denenmez** (yukarıdaki sessiz yarım
+çalışma yüzünden), yalnızca ydotool ve kayıtlı sürücüler kalır.
+
+Ekransız (ne DISPLAY ne WAYLAND_DISPLAY) Linux: içe aktarma patlamaz,
+çağrı anında açık bir hata verir — `GirdiSecimi.hata`. Ajanın çalışması
+mümkün olmayan bir makinede dürüst davranış budur.
 """
 
 from __future__ import annotations
 
+import os
+import sys
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
 
-from .displays import Display
-
-#: Tıklanabilir ya da okunmaya değer denetim türleri. Bunun dışındakiler
-#: (Pane, Group, Custom) yalnızca çocukları için geziliyor, kendileri
-#: yazılmıyor — yoksa çıktının yarısı yapısal gürültü oluyor.
-INTERESTING = {
-    "Button", "CheckBox", "ComboBox", "Edit", "Document", "Hyperlink",
-    "ListItem", "MenuItem", "RadioButton", "Slider", "SplitButton", "Tab",
-    "TabItem", "Text", "TreeItem", "ToolBar", "Window", "Spinner",
-}
-
-MAX_DEPTH = 12
-MAX_NODES = 220
-
-#: Bu sayının altında düğüm çıkarsa ağaç güvenilmez sayılıp modele
-#: "ekran görüntüsü al" denecek.
-THIN_BELOW = 4
-
-
-@dataclass
-class SnapshotResult:
-    text: str
-    node_count: int
-    window_title: str
-
-    @property
-    def thin(self) -> bool:
-        return self.node_count < THIN_BELOW
+from . import komut
 
 
 @dataclass(frozen=True)
-class Etiket:
-    """Güvenlik kapısına giden etiket cevabı.
+class Oturum:
+    """Nerede çalıştığımızın tek kaynağı."""
 
-    `metin` okunan etiket (boş olabilir: denetim var, adı yok).
-    `okunabilir=False` ise erişilebilirlik katmanı hiç cevap veremedi —
-    bu "etiket yok" DEĞİL, "soru sorulamadı" demektir; kapı bu ayrımı
-    korumak zorunda, yoksa okunamayan bir hedefe tıklama onaysız geçer.
+    tur: str  # "windows" | "x11" | "wayland" | "headless"
+    x_goster: str | None
+    wayland_goster: str | None
+    ydotool_soket: str | None
+
+    @property
+    def x_var(self) -> bool:
+        return self.x_goster is not None
+
+
+def _ydotool_varsayilan_soket() -> str | None:
+    """ydotool'un systemd kullanıcı soketi. uid okunamazsa None."""
+    try:
+        return f"/run/user/{os.getuid()}/ydotool.sock"
+    except AttributeError:  # Windows
+        return None
+
+
+def oturum(ortam: Mapping[str, str] | None = None) -> Oturum:
+    """Oturum türünü ortam değişkenlerinden okur. Hiçbir şeyi çalıştırmaz.
+
+    Wayland + DISPLAY birlikte görülürse tür "wayland" olur: XWayland
+    yüzünden `DISPLAY` dolu olsa bile yerel pencereler X istemcisi değil.
     """
-
-    metin: str = ""
-    okunabilir: bool = True
-
-
-@runtime_checkable
-class Dugum(Protocol):
-    """Bir erişilebilirlik düğümü — arka uçların uyarladığı tek arayüz."""
-
-    @property
-    def tur(self) -> str:
-        """INTERESTING'deki tür adı; boşsa düğüm kapsayıcı sayılır."""
-        ...
-
-    @property
-    def ad(self) -> str:
-        """Denetimin adı; yoksa boş dize."""
-        ...
-
-    @property
-    def etkin(self) -> bool:
-        """Denetim kullanılabilir mi — pasifse çıktıya damga konuyor."""
-        ...
-
-    @property
-    def kutu(self) -> tuple[int, int, int, int] | None:
-        """(sol, üst, sağ, alt) sanal masaüstünde; okunamazsa None."""
-        ...
-
-    @property
-    def deger(self) -> str:
-        """Metin kutularının içeriği — "yazdım mı" sorusunun kanıtı."""
-        ...
-
-    def cocuklar(self) -> list["Dugum"]:
-        """Alt düğümler; uyarlama hataları yutulur, boş liste döner."""
-        ...
+    ortam = os.environ if ortam is None else ortam
+    soket = ortam.get("YDOTOOL_SOCKET") or _ydotool_varsayilan_soket()
+    if sys.platform == "win32":
+        return Oturum("windows", None, None, soket)
+    x = ortam.get("DISPLAY") or None
+    w = ortam.get("WAYLAND_DISPLAY") or None
+    if w:
+        return Oturum("wayland", x, w, soket)
+    if x:
+        return Oturum("x11", x, None, soket)
+    return Oturum("headless", None, None, soket)
 
 
-def agac_metni(
-    kok: Dugum,
-    display: Display,
-    baslik: str,
-    *,
-    max_depth: int = MAX_DEPTH,
-    max_nodes: int = MAX_NODES,
-) -> SnapshotResult:
-    """Kökün çocuklarından metin anlık görüntüsü üretir.
+# --- Araç yoklaması -----------------------------------------------------------
 
-    Kökün KENDİSİ yazılmaz; pencere başlığı üst satırda. Windows ve Linux
-    arka uçları bu fonksiyonu paylaşıyor ki iki platformun çıktısı aynı
-    kurallarla üretilsin.
+#: Kayıtlı sürücüler: ad -> (tür, sınıf, musait_fonksiyonu).
+#: port/wayland buraya kaydolur; bu modül onların içini hiç görmez.
+_suruculer: dict[str, tuple[str, type, Callable[[], bool]]] = {}
+
+
+def surucu_kaydet(
+    ad: str,
+    sinif: type,
+    musait: Callable[[], bool],
+    tur: str = "girdi",
+) -> None:
+    """Yeni bir arka uç kaydeder. `musait` True derse seçim onu da sayar."""
+    _suruculer[ad] = (tur, sinif, musait)
+
+
+def kayitli(tur: str) -> list[tuple[str, type]]:
+    """Verilen türde, o an müsait olan kayıtlı sürücüler (kayıt sırasıyla)."""
+    return [
+        (ad, sinif)
+        for ad, (t, sinif, musait) in _suruculer.items()
+        if t == tur and musait()
+    ]
+
+
+def _x_env(oturum_: Oturum, x_goster: str | None) -> dict[str, str]:
+    """Alt süreçlere geçirilecek X ortamı.
+
+    `x_goster` açıkça verilmişse kazanır — yan masa (port-ortam) yan
+    ekranına `DISPLAY=:n` ile konuşacak.
     """
-    lines: list[str] = []
-    state = {"count": 0, "truncated": False}
+    env: dict[str, str] = {}
+    if x_goster:
+        env["DISPLAY"] = x_goster
+    elif oturum_.x_goster:
+        env["DISPLAY"] = oturum_.x_goster
+    return env
 
-    gez(kok, display, 0, max_depth, max_nodes, lines, state)
 
-    if state["truncated"]:
-        lines.append(f"... truncated at {max_nodes} nodes")
+def xdotool_calisir(
+    oturum_: Oturum, otam: Mapping[str, str] | None = None, x_goster: str | None = None
+) -> bool:
+    """xdotool PATH'te **ve** bu X ekranında cevap veriyor mu.
 
-    header = f"Window: {baslik!r} (display {display.index})"
-    body = "\n".join(lines) if lines else "(no readable controls)"
-    return SnapshotResult(
-        text=f"{header}\n{body}", node_count=state["count"], window_title=baslik
+    Varlık yetmiyor: ölü bir DISPLAY'de xdotool kurulu olabilir ama
+    `getdisplaygeometry` hata verir. Ölçülen şey cevap, kurulum değil.
+    """
+    if oturum_.tur not in ("x11",) and x_goster is None:
+        return False
+    if komut.var_mi("xdotool") is None:
+        return False
+    env = _x_env(oturum_, x_goster)
+    if not env.get("DISPLAY"):
+        return False
+    try:
+        sonuc = komut.calistir(
+            ["xdotool", "getdisplaygeometry"], env_ek=env, zaman_asimi=2.0
+        )
+    except komut.KomutYokHatasi:
+        return False
+    return sonuc.donus == 0
+
+
+def ydotool_calisir(oturum_: Oturum) -> bool:
+    """ydotool: ikili dosya **ve** daemon soketi birlikte olmalı.
+
+    Yalnızca ikiliye bakmak yetmiyordu: daemon kapalıysa ydotool bağlanma
+    hatası verir ve o an sıradaki adaya geçmek gerekir. Soket varsa
+    udev/izin sorunu çağrı anına ertelenmiş olur; orada hata sesli olur
+    (`KomutHatasi`), sessiz yanlış davranış olmaz.
+    """
+    if komut.var_mi("ydotool") is None:
+        return False
+    if not oturum_.ydotool_soket:
+        return False
+    return os.path.exists(oturum_.ydotool_soket)
+
+
+# --- Seçim --------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class GirdiSecimi:
+    """Seçilen girdi sürücüsü. `hata` dolusa seçim başarısız."""
+
+    ad: str | None
+    sinif: type | None
+    env: dict[str, str]
+    hata: str | None = None
+
+
+def girdi_sec(
+    ortam: Mapping[str, str] | None = None, x_goster: str | None = None
+) -> GirdiSecimi:
+    """Girdi sürücüsünü yetenek sırasına göre seçer.
+
+    `x_goster` açıkça verilmişse oturum Wayland/headless olsa bile X
+    yoklaması yapılır: çağıran "şu X ekranına konuş" diyorsa orada gerçek
+    bir X sunucusu var demektir (port-ortam'ın Xvfb/Xephyr yan masası
+    böyle) ve XTEST orada çalışır. Belirtilmemişken Wayland kuralı aynen
+    sürer: oturumun kendi XWayland'ine xdotool ile dokunulmaz.
+    """
+    oturum_ = oturum(ortam)
+    if oturum_.tur == "windows":
+        return GirdiSecimi("win32", None, {}, None)
+    if oturum_.tur == "headless" and x_goster is None:
+        return GirdiSecimi(
+            None,
+            None,
+            {},
+            "No display found: set DISPLAY (X11/Xvfb) or WAYLAND_DISPLAY "
+            "to give the agent a screen to work on.",
+        )
+
+    env = _x_env(oturum_, x_goster)
+    x_yolu = oturum_.tur == "x11" or x_goster is not None
+    if x_yolu and xdotool_calisir(oturum_, ortam, x_goster):
+        return GirdiSecimi("xdotool", None, env, None)
+    if ydotool_calisir(oturum_):
+        return GirdiSecimi("ydotool", None, env, None)
+    for ad, sinif in kayitli("girdi"):
+        return GirdiSecimi(ad, sinif, env, None)
+    # xdotool kurulu ve X oturumu var ama yoklama düşürdüyse hata metni
+    # bunu saklamasın: "kurulu değil" ile "cevap vermiyor" farklı işler.
+    if x_yolu:
+        ayrinti = (
+            "xdotool is installed but its probe failed and ydotool is unavailable"
+            if komut.var_mi("xdotool")
+            else "install xdotool (XTEST) or ydotool (uinput)"
+        )
+    else:
+        ayrinti = "install ydotool (uinput) or a registered portal backend"
+    return GirdiSecimi(None, None, env, f"No input backend available: {ayrinti}")
+
+
+def goruntu_sec(ortam: Mapping[str, str] | None = None) -> GirdiSecimi:
+    """Ekran yakalama arka ucunu seçer. Wayland yolu port/wayland'in kaydı."""
+    oturum_ = oturum(ortam)
+    if oturum_.tur == "windows":
+        return GirdiSecimi("win32", None, {}, None)
+    if oturum_.tur == "x11":
+        return GirdiSecimi("mss", None, _x_env(oturum_, None), None)
+    for ad, sinif in kayitli("goruntu"):
+        return GirdiSecimi(ad, sinif, {}, None)
+    return GirdiSecimi(
+        None,
+        None,
+        {},
+        "No screen capture backend for this session: on Wayland a portal "
+        "backend must be registered; headless has no screen at all.",
     )
 
 
-def gez(dugum: Dugum, display: Display, depth: int, max_depth: int, max_nodes: int,
-        lines: list[str], state: dict) -> None:
-    """Özyinelemeli gezinti — indentation yalnızca satır yazıldığında artar."""
-    if depth > max_depth:
-        return
-    if state["count"] >= max_nodes:
-        state["truncated"] = True
-        return
+def ekran_sec(ortam: Mapping[str, str] | None = None) -> GirdiSecimi:
+    """Monitör envanteri arka ucunu seçer ("ekran" türü).
 
-    try:
-        cocuklar = dugum.cocuklar()
-    except Exception:
-        # Bir denetim gezilirken kapanabilir; ağacın kalanını kaybetme.
-        cocuklar = []
-
-    for cocuk in cocuklar:
-        if state["count"] >= max_nodes:
-            state["truncated"] = True
-            return
-
-        line = satir(cocuk, display)
-        if line is not None:
-            lines.append("  " * depth + line)
-            state["count"] += 1
-            gez(cocuk, display, depth + 1, max_depth, max_nodes, lines, state)
-        else:
-            # İlgisiz kapsayıcı: kendisini yazma ama içine bak, girintiyi artırma.
-            gez(cocuk, display, depth, max_depth, max_nodes, lines, state)
-
-
-def satir(dugum: Dugum, display: Display) -> str | None:
-    """Tek bir düğümün çıktı satırı; gösterilmeyecekse None."""
-    try:
-        tur = dugum.tur
-        kutu = dugum.kutu
-        ad = dugum.ad.strip()
-        etkin = dugum.etkin
-    except Exception:
-        return None
-
-    if tur not in INTERESTING:
-        return None
-
-    if kutu is None:
-        return None
-    left, top, right, bottom = kutu
-    width, height = right - left, bottom - top
-    if width <= 0 or height <= 0:
-        return None  # gizli ya da daraltılmış
-
-    vx, vy = (left + right) // 2, (top + bottom) // 2
-    if not display.contains_virtual(vx, vy):
-        return None  # başka ekranda ya da ekran dışında
-
-    x, y = display.from_virtual(vx, vy)
-    label = f'"{ad[:70]}"' if ad else "(unnamed)"
-    suffix = "" if etkin else " [pasif]"
-
-    try:
-        value = dugum.deger
-    except Exception:
-        value = ""
-    if value:
-        label += f" = {value[:60]!r}"
-
-    return f"{tur} {label} [{x},{y}]{suffix}"
-
-
-#: Odak özetindeki alanların sınırı. Her eylemden önce ve sonra okunuyor;
-#: büyük bir belgenin tamamını iki kez okumak adım başına sınırsız maliyet
-#: olurdu. 200 karakter yazılanı görmeye yetiyor; ötesindeki bir değişiklik
-#: görülmezse sonuç "dogrulanamadi" değil "değişmedi" olur — modeli
-#: ekran görüntüsü almaya iten uyarı yine çıkıyor.
-ODAK_SINIRI = 200
-
-
-def odak_ozeti_metni(dugum: Dugum) -> tuple[str, str, str]:
-    """Odaktaki düğümün (tür, ad, değer) özeti.
-
-    Alan sınırları Windows'taki özgün davranışla birebir: tür 40, ad 80,
-    değer `ODAK_SINIRI`. Ad burada KIRPILMIYOR (satır biçimlendirmesinden
-    farkı bu ve bilinçli: özet eşitlik karşılaştırması için okunuyor).
+    Wayland'de xrandr **bilinçli olarak kullanılmaz**: XWayland üzerinden
+    cevap verir ama o cevap gerçek çıktı düzeni olmayabiliyor — yarım
+    doğru bir monitör listesi, yanlış ekrandan yakalanan kareden farksız.
+    Orada portal arka ucu (port/wayland kaydı) konuşur; kayıt yoksa hata
+    açıkça söylenir.
     """
-    return (
-        dugum.tur[:40],
-        dugum.ad[:80],
-        dugum.deger[:ODAK_SINIRI],
+    oturum_ = oturum(ortam)
+    if oturum_.tur == "windows":
+        return GirdiSecimi("win32", None, {}, None)
+    if oturum_.tur == "x11":
+        return GirdiSecimi("xrandr", None, _x_env(oturum_, None), None)
+    for ad, sinif in kayitli("ekran"):
+        return GirdiSecimi(ad, sinif, {}, None)
+    return GirdiSecimi(
+        None,
+        None,
+        {},
+        "No display enumeration backend for this session: on Wayland a "
+        "portal backend must be registered (xrandr would only describe "
+        "XWayland, not the real outputs).",
     )
+
+
+# --- Acil durdurmanın Esc okuyucusu -------------------------------------------
+
+
+def esc_okuyucu() -> Callable[[], bool] | None:
+    """Esc'in o an basılı olup olmadığını söyleyen bir çağrılabilir.
+
+    Windows: `GetAsyncKeyState` (mevcut davranış aynen).
+    X11: `Xlib` kuruluysa `XQueryKeymap` — süreç içinde, ayrıcalık
+    istemiyor, XTEST kısıtından etkilenmiyor.
+    Wayland: aynı yol **kısmen** okur — XWayland yalnızca bir X istemcisi
+    odaktayken tuşları görüyor, yerel pencere odaktayken kör. Portal
+    tarafında global tuş durumu diye bir okuma yok (port/wayland doğruladı:
+    RemoteDesktop yalnızca Notify* yazar, ScreenCast yalnızca akış verir),
+    o yüzden Wayland'de Esc iyimser bir deneme; asıl güvence UI durdur
+    düğmesi ve iyimser okuyucu tamamen yoksa bağlanan SIGINT/SIGTERM
+    yolu (killswitch.start yalnızca okuyucu None iken bağlar; konsol
+    Ctrl-C'si başka platformlarda eskisi gibi kalsın diye).
+    Kurulu değilse None döner: bir bağımlılık uğruna zorlamak yerine
+    sınırı söylüyoruz.
+    """
+    tur = oturum().tur
+    if tur == "windows":
+        return _win_esc_okuyucu()
+    if tur in ("x11", "wayland"):
+        return _xlib_esc_okuyucu()
+    return None
+
+
+def _win_esc_okuyucu() -> Callable[[], bool]:
+    import ctypes
+
+    def oku() -> bool:
+        return bool(ctypes.windll.user32.GetAsyncKeyState(0x1B) & 0x8000)
+
+    return oku
+
+
+def _xlib_esc_okuyucu() -> Callable[[], bool] | None:
+    """XQueryKeymap tabanlı okuyucu — python-xlib yoksa None.
+
+    Geçici içe aktarma: port/wayland'in portal arka ucu kurulunca buraya
+    D-Bus tabanlı bir okuma eklemek mümkün ama portal global tuş durumu
+    vermiyor; o yüzden şimdilik Xlib ya da hiç.
+    """
+    try:
+        from Xlib import display as xdisplay  # type: ignore[import-not-found]
+        from Xlib import XK  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+    try:
+        baglanti = xdisplay.Display()
+        kod = baglanti.keysym_to_keycode(XK.string_to_keysym("Escape"))
+    except Exception:
+        return None
+
+    def oku() -> bool:
+        try:
+            izgara = baglanti.query_keymap()
+            return bool(izgara[kod // 8] & (1 << (kod % 8)))
+        except Exception:
+            # Bağlantı koptuysa acil durdurmayı düşürme: En az bir kez
+            # False dönmek, kullanıcının Esc'ini yok etmez.
+            return False
+
+    return oku

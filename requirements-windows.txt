@@ -1,0 +1,15 @@
+# WINDOWS'A ÖZEL paketler — Linux'ta kurulmaz, kurulamaz da.
+#
+# Kurulum:  pip install -r requirements.txt -r requirements-windows.txt
+#
+# İkisinin de içi Win32 API'sine bağlı; PyPI'da Linux tekerleği (wheel)
+# yok. requirements.txt'de kalsalardı Linux kurulumu daha ilk pakette
+# hata verirdi — yani "Linux'ta da kuruluyor" iddiası yalan olurdu.
+
+# UI Automation yan kanalı. Linux'ta karşılığı AT-SPI; import yolları
+# ayrı (backend/computer/uia.py vs. gelecek AT-SPI modülü).
+uiautomation==2.0.29
+
+# Terminal: ConPTY oturumu. Linux'ta yerel pty kullanılıyor, bu paket
+# orada gereksiz ve kurulamaz.
+pywinpty==3.0.5

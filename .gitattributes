@@ -1,0 +1,13 @@
+# Satır sonları platformdan bağımsız sabitlensin.
+#
+# Windows'ta core.autocrlf=true (Git for Windows varsayılanı) checkout'ta
+# LF'i CRLF yapıyor. Kabuk betiğinin ilk satırı `#!/bin/sh\r` olursa
+# Linux'ta çalışmıyor; kanca kurulduğu gibi kırık kalıyor — bu yüzden
+# depoda ne durduğuna değil, checkout'ta neye dönüştüğüne karar veriliyor.
+#
+# Kabuk yorumlayıcısına verilenler her yerde LF, cmd.exe'ye verilenler
+# her yerde CRLF.
+
+*.sh text eol=lf
+scripts/pre-commit text eol=lf
+*.bat text eol=crlf
