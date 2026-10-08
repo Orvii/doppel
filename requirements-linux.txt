@@ -1,0 +1,28 @@
+# LINUX'A ÖZEL pip paketleri.
+#
+# Kurulum:  pip install -r requirements.txt -r requirements-linux.txt
+#
+# Kısa liste — çoğu iş sistem araçlarıyla yapılıyor, Python paketiyle
+# değil:
+#
+#   Xvfb / Xephyr   kendi masaüstü (yan ekran)
+#   xdotool, XTEST  fare ve klavye
+#   ffmpeg x11grab  kendi masanın kaydı
+#   AT-SPI          erişilebilirlik. pyatspi pip'ten kurulamıyor; apt
+#                   python3-pyatspi + at-spi2-core, oturum veri yoluyla
+#                   (dbus-run-session) aktive oluyor.
+#
+# Ekran yakalama `mss` ile yapılıyor; o paket zaten requirements.txt'de
+# (ortak) ve Linux'ta da çalışıyor.
+
+# Wayland portal taşıyıcısı. Saf Python, çalışma zamanı bağımlılığı yok.
+# Gerekçe (taşıyıcının kendi docstring'inde de yazılı): gdbus, fd listesini
+# süreç çıkmadan düşürüyor; portal el sıkışması fd taşıdığı için o paket
+# bu işi yapamıyor. dbus-next bunu taşıyor.
+#
+# TEMBEL import: yalnızca `backend/computer/portal_tasiyici.py` içinde, bir
+# Wayland oturumu gerçekten o yola girdiğinde yükleniyor. Ne uygulama
+# açılışında ne test toplama anında `sys.modules`'a giriyor — yani bu
+# paket kurulu olmasa bile takım toplanıp koşar; eksikliği yalnızca
+# gerçek portal çağrısında, açık bir hata olarak görünür.
+dbus-next==0.2.3
