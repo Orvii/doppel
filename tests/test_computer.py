@@ -357,7 +357,7 @@ class TestDispatcherGate:
 
         tiklanan = self._tiklamayi_izle(monkeypatch)
         monkeypatch.setattr(
-            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("ButtonControl", "Gönder")
+            dispatch_mod.uia, "_imza_oku", lambda vx, vy: Imza("ButtonControl", "Gönder")
         )
         asked = []
         d = self._dispatcher(approve=lambda *a: asked.append(a) or False)
@@ -372,7 +372,7 @@ class TestDispatcherGate:
 
         tiklanan = self._tiklamayi_izle(monkeypatch)
         monkeypatch.setattr(
-            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("ButtonControl", "Kaydet")
+            dispatch_mod.uia, "_imza_oku", lambda vx, vy: Imza("ButtonControl", "Kaydet")
         )
         asked = []
         d = self._dispatcher(approve=lambda *a: asked.append(a) or True)
@@ -392,7 +392,7 @@ class TestDispatcherGate:
             raise RuntimeError("E_ACCESSDENIED")
 
         tiklanan = self._tiklamayi_izle(monkeypatch)
-        monkeypatch.setattr(dispatch_mod, "imza_noktada", patla)
+        monkeypatch.setattr(dispatch_mod.uia, "_imza_oku", patla)
         asked = []
         d = self._dispatcher(approve=lambda *a: asked.append(a) or True)
         d.run("left_click", {"coordinate": [10, 10]})
@@ -404,7 +404,7 @@ class TestDispatcherGate:
         from backend.agent.dispatch import Denied
 
         tiklanan = self._tiklamayi_izle(monkeypatch, baslik="Garanti BBVA - Ödeme")
-        monkeypatch.setattr(dispatch_mod, "imza_noktada", lambda vx, vy: None)
+        monkeypatch.setattr(dispatch_mod.uia, "_imza_oku", lambda vx, vy: None)
         d = self._dispatcher(approve=lambda *_a: False)
         with pytest.raises(Denied):
             d.run("left_click", {"coordinate": [10, 10]})
@@ -418,7 +418,7 @@ class TestDispatcherGate:
 
         tiklanan = self._tiklamayi_izle(monkeypatch)
         monkeypatch.setattr(
-            dispatch_mod, "imza_noktada", lambda vx, vy: Imza("MenuItemControl", "Remove")
+            dispatch_mod.uia, "_imza_oku", lambda vx, vy: Imza("MenuItemControl", "Remove")
         )
         d = self._dispatcher(approve=lambda *_a: False)
         with pytest.raises(Denied):

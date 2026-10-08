@@ -298,16 +298,22 @@ class Dispatcher:
             return ToolOutcome(content=metin or to_text(panel))
         return ToolOutcome(content=str(result) if result is not None else "OK")
 
-    def _hedef_etiketi(self, name: str, payload: dict[str, Any]) -> str:
-        """Tıklanacak denetimin UIA etiketi. Okunamıyorsa boş dize.
+    def _hedef_etiketi(self, name: str, payload: dict[str, Any]) -> tuple[str, bool]:
+        """Tıklanacak denetimin etiketi ve okunabilirliği: `(metin, okunabilir)`.
 
-        Okunamadığında güvenli taraf SAFE: UIA'nın sustuğu yerde (oyun,
-        tuval, yükseltilmiş pencere) her tıklamaya onay sormak, sıradan
-        bir tıklamayı sürekli onaya düşürür ve yorgunluk kapıyı işlevsiz
-        kılar; pencere başlığı süzgeci o yerlerde yine çalışıyor.
+        İki ayrı hâl (`uia.etiket_noktada`nın sözleşmesi): "noktada adı olan
+        denetim yok" → okunabilir, boş metin; "erişilebilirlik katmanı soruya
+        cevap veremedi" → okunamadı. İkincisi SAFE sayılamaz — sessiz SAFE
+        tam olarak orada doğar. Windows uygulaması değişmiyor: `imza_noktada`
+        denetimi bulamadığında (oyun, tuval, yükseltilmiş pencere) cevap yine
+        okunabilir-boş ve karar SAFE kalıyor.
+
+        Ölü COM, erişim reddi, kırpılmış koordinat: hepsi normal, okunabilir
+        boş kabul edilip karar pencere başlığına bırakılıyor. Koordinat
+        gerçekten bozuksa işleyici kendi hatasını zaten verecek.
         """
         if name not in gate.CLICK_TOOLS:
-            return ""
+            return "", True
         nokta = payload.get("coordinate")
         try:
             if nokta is None:
@@ -317,22 +323,21 @@ class Dispatcher:
             elif isinstance(nokta, (list, tuple)) and len(nokta) == 2:
                 vx, vy = self._virtual(nokta)
             else:
-                return ""
-            imza = imza_noktada(vx, vy)
+                return "", True
+            etiket = uia.etiket_noktada(vx, vy)
         except Exception:
-            # Ölü COM, erişim reddi, kırpılmış koordinat: hepsi normal,
-            # etiketsiz karar kapıyı düşürmemeli. Koordinat gerçekten
-            # bozuksa işleyici kendi hatasını zaten verecek.
-            return ""
-        return imza.ad if imza is not None else ""
+            return "", True
+        return etiket.metin, etiket.okunabilir
 
     def _gate(self, name: str, payload: dict[str, Any]) -> None:
         """Riskli eylemde onay ister. Onay yoksa eylem hiç çalışmaz."""
+        etiket, okunabilir = self._hedef_etiketi(name, payload)
         verdict = gate.classify(
             name,
             payload,
             window_title=win.foreground_title(),
-            label=self._hedef_etiketi(name, payload),
+            label=etiket,
+            label_okunabilir=okunabilir,
         )
         if not verdict.needs_confirmation:
             return

@@ -84,6 +84,11 @@ _MODELLER = [
     "backend.computer.canli",
     "backend.computer.terminal",
     "backend.safety.killswitch",
+    # AT-SPI arka ucu ve onu devreden uia: pyatspi bu yüzeyde engelli,
+    # modüller yine içe aktarılabilmeli (eksiklik çağrıda açık hata).
+    "backend.computer.uia_linux",
+    "backend.computer.uia",
+    "backend.workflows.imza",
     # Portal sürücüleri (port/wayland): dbus_next yalnızca çalışma
     # zamanında, tembel içe aktarılır — bu yüzeyde de patlamamalı.
     "backend.computer.portal_tasiyici",
@@ -157,7 +162,7 @@ class TestLinuxIceAktarma:
             "Linux'ta içe aktarılamayan modüller: "
             + ", ".join(f"{k} ({v})" for k, v in sonuc["hata"].items())
         )
-        assert len(eksik) == 18, f"beklenen 18 modül, içe aktarılan {len(eksik)}"
+        assert len(eksik) == 21, f"beklenen 21 modül, içe aktarılan {len(eksik)}"
 
     def test_oturum_x11_gorunur(self, sonuc):
         assert sonuc["oturum"] == "x11"

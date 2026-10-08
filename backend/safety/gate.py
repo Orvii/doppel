@@ -178,14 +178,25 @@ def classify_window(title: str) -> Verdict:
     return SAFE
 
 
-def classify_label(label: str) -> Verdict:
+def classify_label(label: str, okunabilir: bool = True) -> Verdict:
     """Tıklanan denetimin etiketini sınıflandırır.
 
     Etiket okunamadıysa boş gelir ve burada SAFE dönüyor: UIA'nın kapalı
     olduğu yer (oyun, tuval, yükseltilmiş pencere) sıradan kullanımda da
     yaygın ve oradaki her tıklamayı onaya düşürmek, kapıyı yorgunlukla
     işlevsiz kılardı. Pencere başlığı süzgeci o yerde yine çalışıyor.
+
+    `okunabilir=False` AYRI bir hâl: erişilebilirlik katmanı soruya hiç
+    cevap veremedi ("hangi nokta" sorusu sorulamadı). Bu, boş etiketle
+    aynı sayılamaz — sessiz SAFE tam olarak burada doğar; okunamayan bir
+    hedefte tıklama koordinatına değil denetimin ne olduğuna bakılabildiği
+    hâlde bakılamadığında, kapı soruyor.
     """
+    if not okunabilir:
+        return Verdict(
+            Risk.CONFIRM,
+            "cannot read the accessibility label of the clicked control",
+        )
     for pattern, reason in LABEL_RULES:
         if pattern.search(label):
             return Verdict(Risk.CONFIRM, reason)
@@ -215,12 +226,17 @@ def classify_write(path: str) -> Verdict:
 
 
 def classify(name: str, payload: dict, window_title: str = "",
-             label: str = "") -> Verdict:
+             label: str = "", label_okunabilir: bool = True) -> Verdict:
     """Bir araç çağrısının tamamını sınıflandırır.
 
-    `label` tıklanacak denetimin UIA etiketi; okuyan taraf
-    `Dispatcher._hedef_etiketi`. Okunamadıysa boş gelir ve yalnızca
-    pencere başlığı karar verir.
+    `label` tıklanacak denetimin erişilebilirlik etiketi; okuyan taraf
+    `Dispatcher._hedef_etiketi`. Etiket boş gelirse karar pencere
+    başlığına kalır.
+
+    `label_okunabilir=False` ise erişilebilirlik katmanı soruya hiç cevap
+    veremedi — bu boş etiketle aynı şey değil: okunamayan bir hedefe
+    tıklama onay istiyor (bkz. `classify_label`), çünkü "okuyamadım"ı
+    "riskli değil" saymak sessiz SAFE üretirdi.
     """
     if name == "run_shell":
         return classify_shell(str(payload.get("command", "")))
@@ -259,7 +275,7 @@ def classify(name: str, payload: dict, window_title: str = "",
         verdict = classify_window(window_title)
         if verdict.needs_confirmation:
             return verdict
-        return classify_label(label)
+        return classify_label(label, okunabilir=label_okunabilir)
 
     if name in {"type", "key", "left_click_drag"}:
         return classify_window(window_title)
